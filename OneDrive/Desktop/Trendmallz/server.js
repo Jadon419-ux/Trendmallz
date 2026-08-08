@@ -496,15 +496,19 @@ app.post('/api/update-price', (req, res) => {
   res.json({ success: true, price: p, compare: c, discount: disc });
 });
 
-// ── Nodemailer ────────────────────────────────────────────────────────────────
-const nodemailer = require('nodemailer');
-const _mailer = nodemailer.createTransport({
-  host: 'smtp.gmail.com', port: 587, secure: false,
-  connectionTimeout: 8000,
-  greetingTimeout: 8000,
-  socketTimeout: 10000,
-  auth: { user: 'trendmallz.support@gmail.com', pass: process.env.GMAIL_APP_PASSWORD || '' }
-});
+// ── Resend (email delivery via HTTP API — no SMTP needed) ────────────────────
+async function _sendEmail(to, subject, html) {
+  const key = process.env.RESEND_API_KEY;
+  if (!key) throw new Error('RESEND_API_KEY not set');
+  const r = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from: 'TrendMallz <onboarding@resend.dev>', to, subject, html })
+  });
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.message || 'Resend error');
+  return data;
+}
 
 // ── User store ────────────────────────────────────────────────────────────────
 const _usersFile = path.join(__dirname, 'users.json');
@@ -562,30 +566,25 @@ app.post('/api/auth/signup', async (req, res) => {
   };
   const protocol = (req.headers['x-forwarded-proto'] || req.protocol);
   const verifyUrl = protocol + '://' + req.get('host') + '/verify-email?token=' + token;
-  if (process.env.GMAIL_APP_PASSWORD) {
+  if (process.env.RESEND_API_KEY) {
     _pendingVerify.set(token, { userData, expires: Date.now() + 24 * 3600 * 1000 });
     try {
-      const _mailTimeout = new Promise((_, rej) => setTimeout(() => rej(new Error('Mail timeout')), 12000));
-      await Promise.race([
-        _mailer.sendMail({
-          from: '"TrendMallz" <trendmallz.support@gmail.com>',
-          to: email,
-          subject: 'Verify your TrendMallz account',
-          html: '<div style="font-family:sans-serif;max-width:480px;margin:0 auto;background:#111;color:#f5f4f0;padding:32px;border-radius:16px">' +
-            '<h1 style="color:#FF6B00;margin:0 0 4px">TrendMallz</h1>' +
-            '<p style="color:#888;margin:0 0 28px;font-size:13px">Africa\'s premier fashion marketplace</p>' +
-            '<h2 style="font-size:20px;margin:0 0 12px">Hi ' + fname + ', verify your email</h2>' +
-            '<p style="color:#ccc;line-height:1.6;margin:0 0 28px">Click the button below to verify your email and activate your account.</p>' +
-            '<a href="' + verifyUrl + '" style="display:inline-block;background:#FF6B00;color:#111;font-weight:700;padding:14px 32px;border-radius:10px;text-decoration:none;font-size:15px">Verify My Email</a>' +
-            '<p style="color:#555;font-size:12px;margin:28px 0 0">Link expires in 24 hours. If you did not sign up, ignore this email.</p>' +
-            '</div>'
-        }),
-        _mailTimeout
-      ]);
+      await _sendEmail(
+        email,
+        'Verify your TrendMallz account',
+        '<div style="font-family:sans-serif;max-width:480px;margin:0 auto;background:#111;color:#f5f4f0;padding:32px;border-radius:16px">' +
+        '<h1 style="color:#FF6B00;margin:0 0 4px">TrendMallz</h1>' +
+        '<p style="color:#888;margin:0 0 28px;font-size:13px">Africa\'s premier fashion marketplace</p>' +
+        '<h2 style="font-size:20px;margin:0 0 12px">Hi ' + fname + ', verify your email</h2>' +
+        '<p style="color:#ccc;line-height:1.6;margin:0 0 28px">Click the button below to verify your email and activate your account.</p>' +
+        '<a href="' + verifyUrl + '" style="display:inline-block;background:#FF6B00;color:#111;font-weight:700;padding:14px 32px;border-radius:10px;text-decoration:none;font-size:15px">Verify My Email</a>' +
+        '<p style="color:#555;font-size:12px;margin:28px 0 0">Link expires in 24 hours. If you did not sign up, ignore this email.</p>' +
+        '</div>'
+      );
       return res.json({ success: true, message: 'Verification email sent! Check your inbox.' });
     } catch (err) {
       console.error('Mail error:', err.message);
-      return res.status(500).json({ error: 'Email delivery failed: ' + err.message + '. Check GMAIL_APP_PASSWORD.' });
+      return res.status(500).json({ error: 'Email delivery failed: ' + err.message });
     }
   } else {
     userData.verified = true;
