@@ -300,16 +300,22 @@ function doSignup() {
   if(pass.length<6){showToast('Password must be at least 6 characters','error');return;}
   if(!terms){showToast('Please accept the terms','error');return;}
   var brandName = state.signupType==='vendor' ? (document.getElementById('signup-brand') ? document.getElementById('signup-brand').value.trim() : '') : '';
+  var _sbtn = document.querySelector('#auth-signup .btn-primary') || Array.from(document.querySelectorAll('#auth-signup button')).find(function(b){return b.type==='button'&&b.textContent.includes('Create');});
+  if(_sbtn){_sbtn.disabled=true;_sbtn.textContent='Creating account...';}
   fetch('/api/auth/signup',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({fname:fname,lname:lname,email:email,password:pass,role:state.signupType,brandName:brandName,countryCode:countryCode})})
   .then(function(r){return r.json();})
   .then(function(res){
+    if(_sbtn){_sbtn.disabled=false;_sbtn.textContent='Create Account';}
     if(res.error){showToast(res.error,'error');return;}
     if(res.autoVerified){loginUser(res.user);showToast('Welcome to TrendMallz, '+fname+'!');return;}
     closeAuthModal();
     showToast('Check your email to verify your account!','info');
   })
-  .catch(function(){showToast('Connection error. Please try again.','error');});
+  .catch(function(){
+    if(_sbtn){_sbtn.disabled=false;_sbtn.textContent='Create Account';}
+    showToast('Connection error. Please try again.','error');
+  });
 }
 function loginUser(user) {
   state.currentUser = user;
