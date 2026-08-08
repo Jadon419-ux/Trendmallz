@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <!-- Background -->
+  <rect width="200" height="200" fill="#f5f4f0"/>
+
+  <!-- ── HANGER (orange) ── -->
+  <!-- Hook loop at top-center -->
+  <path d="M100 16 Q116 16 116 27 Q116 36 107 39 L100 40"
+        fill="none" stroke="#FF6B00" stroke-width="4"
+        stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Neck -->
+  <line x1="100" y1="40" x2="100" y2="58"
+        stroke="#FF6B00" stroke-width="4.5" stroke-linecap="round"/>
+  <!-- Left arm -->
+  <line x1="100" y1="58" x2="20" y2="80"
+        stroke="#FF6B00" stroke-width="5" stroke-linecap="round"/>
+  <!-- Right arm -->
+  <line x1="100" y1="58" x2="180" y2="80"
+        stroke="#FF6B00" stroke-width="5" stroke-linecap="round"/>
+  <!-- Cross-bar -->
+  <line x1="20" y1="80" x2="180" y2="80"
+        stroke="#FF6B00" stroke-width="5" stroke-linecap="round"/>
+
+  <!-- ── LEFT: Dark T-shirt ── -->
+  <polygon points="20,80 7,90 10,103 24,95"  fill="#1c1c1c"/>
+  <polygon points="54,80 65,90 62,103 48,95" fill="#1c1c1c"/>
+  <rect x="20" y="80" width="34" height="52" fill="#1c1c1c"/>
+  <!-- Collar cutout -->
+  <ellipse cx="37" cy="80" rx="9" ry="5.5" fill="#f5f4f0"/>
+
+  <!-- ── CENTER: Orange tank top ── -->
+  <!-- Straps -->
+  <rect x="79"  y="63" width="13" height="19" rx="5" fill="#FF6B00"/>
+  <rect x="108" y="63" width="13" height="19" rx="5" fill="#FF6B00"/>
+  <!-- Body (trapezoidal, slightly wider at top) -->
+  <path d="M76 80 L124 80 L118 144 L82 144 Z" fill="#FF6B00"/>
+
+  <!-- ── RIGHT: Dark pants ── -->
+  <!-- Waistband -->
+  <rect x="138" y="80" width="44" height="17" rx="2" fill="#1c1c1c"/>
+  <!-- Left leg -->
+  <path d="M138 97 L143 144 L158 144 L162 97 Z" fill="#1c1c1c"/>
+  <!-- Right leg -->
+  <path d="M162 97 L164 144 L178 144 L182 97 Z" fill="#1c1c1c"/>
+
+  <!-- ── TEXT ── -->
+  <text x="100" y="170"
+        text-anchor="middle"
+        font-family="'Arial Black','Helvetica Neue',Arial,sans-serif"
+        font-weight="900"
+        font-size="27"
+        letter-spacing="-0.5"
+        fill="#1c1c1c">Trend<tspan fill="#FF6B00">Mallz</tspan></text>
+</svg>

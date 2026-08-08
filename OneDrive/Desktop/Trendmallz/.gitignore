@@ -1,0 +1,10 @@
+.env
+.env.local
+node_modules/
+*.session
+custom_products.json
+__pycache__/
+*.pyc
+venv/
+.claude/
+

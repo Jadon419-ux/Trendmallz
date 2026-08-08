@@ -1,0 +1,1069 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TrendMallz – Africa's Fashion Marketplace</title>
+<link rel="icon" type="image/svg+xml" href="logo.svg">
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config={theme:{extend:{colors:{obsidian:{DEFAULT:'#0A0A0A',50:'#1a1a1a',100:'#141414',200:'#0f0f0f'},citrine:{DEFAULT:'#FF6B00',dark:'#e05e00',light:'#ff9a4d'},charcoal:{DEFAULT:'#1A1A1A',light:'#262626',lighter:'#333333',border:'#2a2a2a'}},fontFamily:{display:['"Syne"','sans-serif'],body:['"Inter"','sans-serif']}}}}
+</script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Syne:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="https://js.paystack.co/v1/inline.js"></script>
+<link rel="stylesheet" href="styles.css">
+
+</head>
+<body class="min-h-screen bg-obsidian text-white antialiased">
+
+<!-- ===================== AUTH MODAL ===================== -->
+<div id="auth-modal" class="fixed inset-0 z-[200] flex items-center justify-center hidden">
+  <div class="modal-overlay absolute inset-0 bg-black/70 backdrop-blur-sm" onclick="closeAuthModal()"></div>
+  <div class="modal-box relative w-full max-w-md mx-4 bg-charcoal border border-charcoal-border rounded-2xl shadow-2xl flex flex-col max-h-[90vh]">
+    <!-- Tabs -->
+    <div class="flex border-b border-charcoal-border shrink-0">
+      <button onclick="switchAuthTab('login')" id="auth-tab-login" class="tab-btn active flex-1 py-4 text-sm font-semibold text-center">Sign In</button>
+      <button onclick="switchAuthTab('signup')" id="auth-tab-signup" class="tab-btn flex-1 py-4 text-sm font-semibold text-center text-neutral-400">Create Account</button>
+    </div>
+    <!-- Login Form -->
+    <div id="auth-login" class="p-6 sm:p-8 overflow-y-auto">
+      <h2 class="font-display text-2xl font-bold mb-1">Welcome back</h2>
+      <p class="text-neutral-500 text-sm mb-6">Sign in to your TrendMallz account</p>
+      <div class="space-y-4">
+        <div>
+          <label class="block text-xs font-medium text-neutral-400 mb-1.5">Email Address</label>
+          <input id="login-email" type="email" placeholder="you@example.com" class="w-full px-4 py-3 bg-obsidian border border-charcoal-border rounded-xl text-sm focus:border-citrine transition-colors" value="customer@demo.com">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-neutral-400 mb-1.5">Password</label>
+          <div class="relative">
+            <input id="login-password" type="password" placeholder="••••••••" class="w-full px-4 py-3 bg-obsidian border border-charcoal-border rounded-xl text-sm focus:border-citrine transition-colors pr-12" value="demo123">
+            <button onclick="togglePw('login-password')" class="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-white"><i data-lucide="eye" class="w-4 h-4"></i></button>
+          </div>
+        </div>
+        <div class="flex items-center justify-between">
+          <label class="flex items-center gap-2 text-sm text-neutral-400 cursor-pointer"><input type="checkbox" class="rounded"> Remember me</label>
+          <a href="#" class="text-xs text-citrine hover:underline">Forgot password?</a>
+        </div>
+        <button onclick="doLogin()" class="w-full py-3.5 bg-citrine text-obsidian font-bold rounded-xl hover:bg-citrine-dark transition-colors text-sm uppercase tracking-wider">Sign In</button>
+      </div>
+      <div class="mt-6 p-4 bg-obsidian rounded-xl border border-charcoal-border">
+        <p class="text-xs text-neutral-500 mb-2 font-semibold uppercase tracking-wider">Demo Accounts</p>
+        <div class="space-y-1.5">
+          <button onclick="quickLogin('customer@demo.com','demo123','customer')" class="w-full text-left px-3 py-2 rounded-lg hover:bg-charcoal text-xs text-neutral-400 transition-colors flex justify-between items-center group">
+            <span>👤 Customer Demo</span><span class="text-neutral-600 group-hover:text-citrine"><a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="4d2e383e392220283f0d29282022632e2220">[email&#160;protected]</a></span>
+          </button>
+          <button onclick="quickLogin('vendor@demo.com','demo123','vendor')" class="w-full text-left px-3 py-2 rounded-lg hover:bg-charcoal text-xs text-neutral-400 transition-colors flex justify-between items-center group">
+            <span>🏪 Vendor Demo</span><span class="text-neutral-600 group-hover:text-citrine"><a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="4a3c2f242e25380a2e2f272564292527">[email&#160;protected]</a></span>
+          </button>
+          <button onclick="quickLogin('admin@trendmallz.com','admin123','admin')" class="w-full text-left px-3 py-2 rounded-lg hover:bg-charcoal text-xs text-neutral-400 transition-colors flex justify-between items-center group">
+            <span>⚡ Admin Demo</span><span class="text-neutral-600 group-hover:text-citrine"><a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="9efffaf3f7f0deeaecfbf0faf3fff2f2e4b0fdf1f3">[email&#160;protected]</a></span>
+          </button>
+        </div>
+      </div>
+    </div>
+    <!-- Signup Form -->
+    <div id="auth-signup" class="p-6 sm:p-8 hidden overflow-y-auto">
+      <h2 class="font-display text-2xl font-bold mb-1">Join TrendMallz</h2>
+      <p class="text-neutral-500 text-sm mb-6">Create your account and start shopping</p>
+      <div class="flex gap-3 mb-5">
+        <button onclick="setSignupType('customer')" id="stype-customer" class="flex-1 py-2.5 rounded-xl border border-citrine bg-citrine/10 text-citrine text-xs font-semibold transition-all">🛍️ Customer</button>
+        <button onclick="setSignupType('vendor')" id="stype-vendor" class="flex-1 py-2.5 rounded-xl border border-charcoal-border text-neutral-400 text-xs font-semibold transition-all hover:border-citrine">🏪 Vendor/Brand</button>
+      </div>
+      <div class="space-y-4">
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-medium text-neutral-400 mb-1.5">First Name</label>
+            <input id="signup-fname" type="text" placeholder="Ada" class="w-full px-4 py-3 bg-obsidian border border-charcoal-border rounded-xl text-sm focus:border-citrine transition-colors">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-neutral-400 mb-1.5">Last Name</label>
+            <input id="signup-lname" type="text" placeholder="Okafor" class="w-full px-4 py-3 bg-obsidian border border-charcoal-border rounded-xl text-sm focus:border-citrine transition-colors">
+          </div>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-neutral-400 mb-1.5">Email Address</label>
+          <input id="signup-email" type="email" placeholder="you@example.com" class="w-full px-4 py-3 bg-obsidian border border-charcoal-border rounded-xl text-sm focus:border-citrine transition-colors">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-neutral-400 mb-1.5">Country / Region</label>
+          <select id="signup-country" class="w-full px-4 py-3 bg-obsidian border border-charcoal-border rounded-xl text-sm focus:border-citrine transition-colors">
+            <option value="NG" selected>Nigeria (NGN)</option>
+            <option value="GH">Ghana (GHS)</option>
+            <option value="KE">Kenya (KES)</option>
+            <option value="ZA">South Africa (ZAR)</option>
+            <option value="US">United States (USD)</option>
+            <option value="GB">United Kingdom (GBP)</option>
+            <option value="CA">Canada (CAD)</option>
+            <option value="EU">Eurozone (EUR)</option>
+          </select>
+        </div>
+        <div id="vendor-fields" class="hidden">
+          <label class="block text-xs font-medium text-neutral-400 mb-1.5">Brand / Store Name</label>
+          <input id="signup-brand" type="text" placeholder="Your Brand Name" class="w-full px-4 py-3 bg-obsidian border border-charcoal-border rounded-xl text-sm focus:border-citrine transition-colors">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-neutral-400 mb-1.5">Password</label>
+          <input id="signup-password" type="password" placeholder="Min. 8 characters" class="w-full px-4 py-3 bg-obsidian border border-charcoal-border rounded-xl text-sm focus:border-citrine transition-colors">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-neutral-400 mb-1.5">Referral Code <span class="text-neutral-600">(optional)</span></label>
+          <input id="signup-referral" type="text" placeholder="e.g. REF-ABC123" class="w-full px-4 py-3 bg-obsidian border border-charcoal-border rounded-xl text-sm focus:border-citrine transition-colors uppercase">
+        </div>
+        <label class="flex items-start gap-2 text-sm text-neutral-400 cursor-pointer">
+          <input type="checkbox" id="signup-terms" class="mt-0.5 rounded shrink-0"> 
+          <span>I agree to the <a href="#" class="text-citrine hover:underline">Terms of Service</a> and <a href="#" class="text-citrine hover:underline">Privacy Policy</a></span>
+        </label>
+        <button onclick="doSignup()" class="w-full py-3.5 bg-citrine text-obsidian font-bold rounded-xl hover:bg-citrine-dark transition-colors text-sm uppercase tracking-wider">Create Account</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== PRODUCT MODAL ===================== -->
+<div id="product-modal" class="fixed inset-0 z-[200] flex items-center justify-center hidden">
+  <div class="modal-overlay absolute inset-0 bg-black/70 backdrop-blur-sm" onclick="closeProductModal()"></div>
+  <div class="modal-box relative w-full max-w-3xl mx-4 bg-charcoal border border-charcoal-border rounded-2xl overflow-hidden shadow-2xl max-h-[90vh] overflow-y-auto">
+    <button onclick="closeProductModal()" class="absolute top-4 right-4 z-10 w-8 h-8 rounded-full bg-black/50 flex items-center justify-center text-neutral-400 hover:text-white">
+      <i data-lucide="x" class="w-4 h-4"></i>
+    </button>
+    <div id="product-modal-body"></div>
+  </div>
+</div>
+
+<!-- ===================== CART DRAWER ===================== -->
+<div class="cart-overlay fixed inset-0 bg-black/50 z-[150]" id="cart-overlay" onclick="toggleCart(false)"></div>
+<div class="cart-drawer fixed top-0 right-0 h-full w-full sm:w-[420px] bg-charcoal z-[160] flex flex-col border-l border-charcoal-border" id="cart-drawer">
+  <div class="flex items-center justify-between p-5 border-b border-charcoal-border">
+    <h3 class="font-display font-bold text-lg">Your Cart <span id="cart-count-label" class="text-neutral-500 font-normal text-sm"></span></h3>
+    <button onclick="toggleCart(false)" class="p-2 text-neutral-400 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+  </div>
+  <div id="cart-items" class="flex-1 overflow-y-auto p-5 space-y-4"></div>
+  <div id="cart-footer" class="p-5 border-t border-charcoal-border space-y-4"></div>
+</div>
+
+<!-- ===================== MOBILE NAV ===================== -->
+<div class="mobile-nav fixed inset-y-0 left-0 w-72 bg-charcoal z-[170] p-6 border-r border-charcoal-border" id="mobile-nav">
+  <div class="flex items-center justify-between mb-8">
+    <div class="flex items-center gap-2">
+      <img src="logo.svg" alt="TrendMallz" class="h-12 w-auto rounded-lg" style="background:#fff;padding:3px">
+    </div>
+    <button onclick="closeMobileNav()" class="p-2 text-neutral-400 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+  </div>
+  <nav class="space-y-1">
+    <a onclick="showPage('home');closeMobileNav()" class="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-obsidian cursor-pointer text-sm font-medium"><i data-lucide="home" class="w-4 h-4 text-citrine"></i>Home</a>
+    <a onclick="showPage('shop');closeMobileNav()" class="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-obsidian cursor-pointer text-sm font-medium"><i data-lucide="shopping-bag" class="w-4 h-4 text-neutral-500"></i>Shop</a>
+    <a onclick="showPage('brands');closeMobileNav()" class="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-obsidian cursor-pointer text-sm font-medium"><i data-lucide="store" class="w-4 h-4 text-neutral-500"></i>Brands</a>
+    <a onclick="showPage('home');document.getElementById('vendor-section').scrollIntoView({behavior:'smooth'});closeMobileNav()" class="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-obsidian cursor-pointer text-sm font-medium"><i data-lucide="trending-up" class="w-4 h-4 text-neutral-500"></i>Sell on TrendMallz</a>
+    <a onclick="showPage('fashionai');closeMobileNav()" class="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-obsidian cursor-pointer text-sm font-medium"><i data-lucide="sparkles" class="w-4 h-4 text-citrine"></i>AI Try-On Studio</a>
+  </nav>
+  <div class="mt-6 pt-6 border-t border-charcoal-border">
+    <button onclick="openAuthModal('login');closeMobileNav()" id="mobile-login-btn" class="w-full py-3 bg-citrine text-obsidian font-bold rounded-xl text-sm">Sign In</button>
+  </div>
+</div>
+<div class="fixed inset-0 bg-black/50 z-[165] hidden" id="mobile-overlay" onclick="closeMobileNav()"></div>
+
+<!-- ===================== NAVBAR ===================== -->
+<nav class="fixed top-0 left-0 right-0 z-50 bg-obsidian/90 backdrop-blur-xl border-b border-charcoal-border">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6">
+    <div class="flex items-center justify-between h-16 sm:h-20">
+      <div class="flex items-center gap-4">
+        <button onclick="openMobileNav()" class="md:hidden p-2 text-neutral-400 hover:text-white"><i data-lucide="menu" class="w-5 h-5"></i></button>
+        <a onclick="showPage('home')" class="flex items-center cursor-pointer group" title="TrendMallz">
+          <img src="logo.svg" alt="TrendMallz" class="h-16 w-auto shrink-0 rounded-xl group-hover:scale-105 transition-transform duration-200" style="background:#fff;padding:4px">
+        </a>
+      </div>
+      <div class="hidden md:flex items-center gap-8">
+        <a onclick="showPage('home')" data-navpage="home" class="text-sm font-medium text-citrine transition-colors cursor-pointer">Home</a>
+        <a onclick="showPage('shop')" data-navpage="shop" class="text-sm font-medium text-neutral-400 hover:text-citrine transition-colors cursor-pointer">Shop</a>
+        <a onclick="showPage('brands')" data-navpage="brands" class="text-sm font-medium text-neutral-400 hover:text-citrine transition-colors cursor-pointer">Brands</a>
+        <a onclick="showPage('home');setTimeout(()=>document.getElementById('vendor-section').scrollIntoView({behavior:'smooth'}),100)" class="text-sm font-medium text-neutral-400 hover:text-citrine transition-colors cursor-pointer">Sell</a>
+        <a onclick="showPage('fashionai')" data-navpage="fashionai" class="text-sm font-medium text-neutral-400 hover:text-citrine transition-colors cursor-pointer flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-citrine pulse-orange inline-block"></span>AI Try-On</a>
+      </div>
+      <!-- Search Bar -->
+      <div class="hidden sm:block relative w-48 lg:w-64">
+        <input id="nav-search" type="text" placeholder="Search products..." oninput="doNavSearch(this.value)" onblur="setTimeout(()=>closeNavSearch(),200)"
+          class="w-full pl-9 pr-4 py-2 bg-charcoal border border-charcoal-border rounded-xl text-sm focus:border-citrine transition-colors text-sm">
+        <i data-lucide="search" class="w-4 h-4 text-neutral-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"></i>
+        <div id="nav-search-results" class="search-results hidden"></div>
+      </div>
+      <div class="flex items-center gap-1 sm:gap-2">
+        <button onclick="toggleWishlistPage()" class="p-2 text-neutral-400 hover:text-white transition-colors relative">
+          <i data-lucide="heart" class="w-5 h-5"></i>
+          <span id="wishlist-count-badge" class="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-[10px] font-bold w-4 h-4 rounded-full hidden items-center justify-center">0</span>
+        </button>
+        <button onclick="toggleCart(true)" class="p-2 text-neutral-400 hover:text-white transition-colors relative">
+          <i data-lucide="shopping-bag" class="w-5 h-5"></i>
+          <span id="cart-badge" class="absolute -top-0.5 -right-0.5 bg-citrine text-black text-[10px] font-bold w-4 h-4 rounded-full hidden items-center justify-center">0</span>
+        </button>
+        <!-- User Menu -->
+        <div class="relative" id="user-menu-wrap">
+          <button onclick="toggleUserMenu()" id="user-menu-btn" class="flex items-center gap-2 p-1.5 rounded-full bg-charcoal hover:bg-charcoal-light transition-colors hidden">
+            <img id="user-avatar" src="" alt="Avatar" class="w-7 h-7 rounded-full object-cover bg-charcoal border border-citrine/20">
+            <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-neutral-500 hidden sm:block"></i>
+          </button>
+          <div id="user-dropdown" class="dropdown w-52 bg-charcoal border border-charcoal-border rounded-2xl shadow-2xl overflow-hidden">
+            <div id="user-dropdown-header" class="px-4 py-3 border-b border-charcoal-border">
+              <p id="dropdown-name" class="text-sm font-semibold"></p>
+              <p id="dropdown-email" class="text-xs text-neutral-500 truncate"></p>
+            </div>
+            <div class="p-1.5">
+              <a onclick="openDashboard();toggleUserMenu()" class="flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-obsidian text-sm cursor-pointer transition-colors"><i data-lucide="layout-dashboard" class="w-4 h-4 text-neutral-500"></i>Dashboard</a>
+              <a onclick="showPage('orders-page');toggleUserMenu()" class="flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-obsidian text-sm cursor-pointer transition-colors"><i data-lucide="package" class="w-4 h-4 text-neutral-500"></i>My Orders</a>
+              <a onclick="showReferralPage();toggleUserMenu()" class="flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-obsidian text-sm cursor-pointer transition-colors"><i data-lucide="users" class="w-4 h-4 text-neutral-500"></i>Referrals</a>
+              <a onclick="toggleWishlistPage();toggleUserMenu()" class="flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-obsidian text-sm cursor-pointer transition-colors"><i data-lucide="heart" class="w-4 h-4 text-neutral-500"></i>Wishlist</a>
+              <a onclick="doLogout();toggleUserMenu()" class="flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-red-500/10 text-sm text-red-400 cursor-pointer transition-colors mt-1 border-t border-charcoal-border"><i data-lucide="log-out" class="w-4 h-4"></i>Sign Out</a>
+            </div>
+          </div>
+        </div>
+        <button onclick="openAuthModal('login')" id="signin-btn" class="hidden sm:flex items-center gap-2 px-4 py-2 bg-citrine text-obsidian text-sm font-bold rounded-xl hover:bg-citrine-dark transition-colors">Sign In</button>
+      </div>
+    </div>
+  </div>
+</nav>
+
+<!-- =================== PAGES CONTAINER =================== -->
+<div id="pages-container" class="pt-16 sm:pt-20">
+
+<!-- =================== HOME PAGE =================== -->
+<div class="page active" id="page-home">
+  <!-- HERO -->
+  <section class="relative h-[85vh] min-h-[600px] flex items-end overflow-hidden">
+    <div id="hero-carousel" class="absolute inset-0 overflow-hidden"></div>
+    <div class="hero-gradient absolute inset-0"></div>
+    <div class="absolute inset-0 bg-[radial-gradient(circle_at_30%_80%,rgba(255,107,0,0.08),transparent_60%)]"></div>
+    <div class="absolute inset-0 bg-[radial-gradient(circle_at_70%_20%,rgba(255,107,0,0.04),transparent_50%)]"></div>
+    <!-- Floating letters -->
+    <div class="absolute inset-0 overflow-hidden pointer-events-none" style="z-index:2">
+      <span class="hero-letter" style="left:4%;bottom:15%;font-size:9rem;--r:-14deg;animation-duration:10s;animation-delay:0s">F</span>
+      <span class="hero-letter" style="left:14%;bottom:25%;font-size:5.5rem;--r:9deg;animation-duration:13s;animation-delay:1.8s">i</span>
+      <span class="hero-letter" style="left:22%;bottom:10%;font-size:7rem;--r:-6deg;animation-duration:8.5s;animation-delay:0.5s">l</span>
+      <span class="hero-letter" style="left:68%;bottom:18%;font-size:8rem;--r:11deg;animation-duration:11s;animation-delay:2.3s">T</span>
+      <span class="hero-letter" style="left:78%;bottom:35%;font-size:5rem;--r:-18deg;animation-duration:9s;animation-delay:0.9s">M</span>
+      <span class="hero-letter" style="left:87%;bottom:12%;font-size:6.5rem;--r:7deg;animation-duration:12.5s;animation-delay:3.1s">Z</span>
+      <span class="hero-letter" style="left:55%;bottom:8%;font-size:10rem;--r:-10deg;animation-duration:7.5s;animation-delay:1.2s">C</span>
+      <span class="hero-letter" style="left:43%;bottom:28%;font-size:4.5rem;--r:16deg;animation-duration:14s;animation-delay:4s">l</span>
+      <span class="hero-letter" style="left:35%;bottom:5%;font-size:6rem;--r:-3deg;animation-duration:9.5s;animation-delay:2.7s">o</span>
+      <span class="hero-letter" style="left:92%;bottom:55%;font-size:3.5rem;--r:22deg;animation-duration:16s;animation-delay:0.3s">s</span>
+    </div>
+    <div class="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 pb-16 sm:pb-24 w-full">
+      <div class="max-w-2xl">
+        <div class="inline-flex items-center gap-2 px-3 py-1.5 bg-white/5 backdrop-blur-sm border border-white/10 rounded-full mb-6 anim-up">
+          <span class="live-dot"></span>
+          <span class="text-xs font-medium text-neutral-300 tracking-wider uppercase">New Season Drop</span>
+        </div>
+        <h1 class="font-display text-5xl sm:text-6xl lg:text-7xl font-bold tracking-tighter leading-[0.9] anim-up anim-d1">Fill Your<br><span class="gradient-text">Closet</span><br>With TrendMallz</h1>
+        <p class="mt-6 text-lg text-neutral-400 max-w-md leading-relaxed"><span id="hero-typewriter"></span><span id="hero-cursor" style="display:inline-block;width:2px;height:1.1em;background:currentColor;margin-left:2px;vertical-align:middle;animation:tw-blink 0.8s step-end infinite;opacity:0.7"></span></p>
+        <div class="flex flex-wrap gap-4 mt-8 anim-up anim-d3">
+          <button onclick="showPage('shop')" class="btn-fire inline-flex items-center gap-2 px-8 py-4 text-white font-semibold rounded-xl text-sm uppercase tracking-wider">
+            <span>Shop Now</span>
+            <i data-lucide="arrow-right" class="w-4 h-4"></i>
+          </button>
+          <button onclick="showPage('brands')" class="inline-flex items-center gap-2 px-8 py-4 bg-white/5 border border-white/10 text-white font-medium rounded-xl hover:bg-white/10 transition-colors text-sm uppercase tracking-wider backdrop-blur-sm">Explore Brands</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- STATS BAR — editorial with count-up -->
+  <section id="stats-section" class="border-b border-[#161616]">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6">
+      <div class="flex divide-x divide-[#161616]">
+        <div class="flex-1 py-8 text-center">
+          <div class="font-display text-3xl sm:text-4xl font-bold text-white">
+            <span class="stat-num" data-target="200" data-prefix="" data-suffix="">0</span><span class="text-citrine">+</span>
+          </div>
+          <div class="text-[10px] uppercase tracking-[0.3em] text-neutral-600 mt-2">Brands</div>
+        </div>
+        <div class="flex-1 py-8 text-center">
+          <div class="font-display text-3xl sm:text-4xl font-bold text-white">
+            <span class="stat-num" data-target="5000" data-prefix="" data-suffix="" data-display-divisor="1000" data-display-suffix="K">0K</span><span class="text-citrine">+</span>
+          </div>
+          <div class="text-[10px] uppercase tracking-[0.3em] text-neutral-600 mt-2">Products</div>
+        </div>
+        <div class="flex-1 py-8 text-center hidden sm:block">
+          <div class="font-display text-3xl sm:text-4xl font-bold text-white">
+            <span class="stat-num" data-target="50000" data-prefix="" data-suffix="" data-display-divisor="1000" data-display-suffix="K">0K</span><span class="text-citrine">+</span>
+          </div>
+          <div class="text-[10px] uppercase tracking-[0.3em] text-neutral-600 mt-2">Customers</div>
+        </div>
+        <div class="flex-1 py-8 text-center hidden sm:block">
+          <div class="font-display text-3xl sm:text-4xl font-bold text-white">
+            <span class="stat-num" data-target="250000000" data-prefix="₦" data-suffix="" data-display-divisor="1000000" data-display-suffix="M">₦0M</span><span class="text-citrine">+</span>
+          </div>
+          <div class="text-[10px] uppercase tracking-[0.3em] text-neutral-600 mt-2">Revenue</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CATEGORIES -->
+  <section class="py-24 sm:py-28">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6">
+      <div class="flex items-end justify-between mb-12">
+        <div>
+          <div class="flex items-center gap-3 mb-4">
+            <div class="w-6 h-px bg-citrine/60"></div>
+            <span class="text-[10px] font-semibold uppercase tracking-[0.35em] text-neutral-600">Collections</span>
+          </div>
+          <h2 class="font-display text-3xl sm:text-4xl font-bold tracking-tight">Shop by Category</h2>
+        </div>
+        <button onclick="showPage('shop')" class="hidden sm:flex items-center gap-2 text-[11px] uppercase tracking-[0.2em] text-neutral-500 hover:text-citrine transition-colors">View All <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i></button>
+      </div>
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+        <button onclick="filterCategory('Streetwear');showPage('shop')" class="group relative aspect-[3/4] rounded-2xl overflow-hidden">
+          <img id="cat-img-streetwear" src="https://picsum.photos/seed/catstreetwear/400/530" alt="" class="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-700">
+          <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent"></div>
+          <div class="absolute bottom-0 left-0 right-0 p-4 sm:p-5"><h3 class="font-display font-semibold text-lg sm:text-xl">Streetwear</h3></div>
+        </button>
+        <button onclick="filterCategory('African Wear');showPage('shop')" class="group relative aspect-[3/4] rounded-2xl overflow-hidden">
+          <img id="cat-img-african" src="https://picsum.photos/seed/catafricanwear/400/530" alt="" class="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-700">
+          <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent"></div>
+          <div class="absolute bottom-0 left-0 right-0 p-4 sm:p-5"><h3 class="font-display font-semibold text-lg sm:text-xl">African Wear</h3></div>
+        </button>
+        <button onclick="filterCategory('Evening Wear');showPage('shop')" class="group relative aspect-[3/4] rounded-2xl overflow-hidden">
+          <img id="cat-img-evening" src="https://picsum.photos/seed/cateveninggown/400/530" alt="" class="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-700">
+          <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent"></div>
+          <div class="absolute bottom-0 left-0 right-0 p-4 sm:p-5"><h3 class="font-display font-semibold text-lg sm:text-xl">Evening Wear</h3></div>
+        </button>
+        <button onclick="filterCategory('Footwear');showPage('shop')" class="group relative aspect-[3/4] rounded-2xl overflow-hidden">
+          <img id="cat-img-footwear" src="https://picsum.photos/seed/catfootwear2/400/530" alt="" class="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-700">
+          <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent"></div>
+          <div class="absolute bottom-0 left-0 right-0 p-4 sm:p-5"><h3 class="font-display font-semibold text-lg sm:text-xl">Footwear</h3></div>
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- TRENDING PRODUCTS -->
+  <section class="py-24 sm:py-28" style="background:rgba(14,14,14,0.6)">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6">
+      <div class="flex items-end justify-between mb-12">
+        <div>
+          <div class="flex items-center gap-3 mb-4">
+            <div class="w-6 h-px bg-citrine/60"></div>
+            <span class="text-[10px] font-semibold uppercase tracking-[0.35em] text-neutral-600">Right Now</span>
+          </div>
+          <h2 class="font-display text-3xl sm:text-4xl font-bold tracking-tight">Trending Now</h2>
+        </div>
+        <button onclick="showPage('shop')" class="hidden sm:flex items-center gap-2 text-[11px] uppercase tracking-[0.2em] text-neutral-500 hover:text-citrine transition-colors">See All <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i></button>
+      </div>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-5" id="home-product-grid"></div>
+    </div>
+  </section>
+
+  <!-- FEATURED BRANDS -->
+  <section class="py-24 sm:py-28" id="brands-section">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6">
+      <div class="flex items-end justify-between mb-12">
+        <div>
+          <div class="flex items-center gap-3 mb-4">
+            <div class="w-6 h-px bg-citrine/60"></div>
+            <span class="text-[10px] font-semibold uppercase tracking-[0.35em] text-neutral-600">Curated Labels</span>
+          </div>
+          <h2 class="font-display text-3xl sm:text-4xl font-bold tracking-tight">Featured Brands</h2>
+        </div>
+        <button onclick="showPage('brands')" class="hidden sm:flex items-center gap-2 text-[11px] uppercase tracking-[0.2em] text-neutral-500 hover:text-citrine transition-colors">All Brands <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i></button>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4" id="home-brands-grid"></div>
+    </div>
+  </section>
+
+  <!-- REFERRAL BANNER -->
+  <section class="py-16 sm:py-20 bg-charcoal/30">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6">
+      <div class="relative rounded-3xl overflow-hidden bg-gradient-to-br from-orange-500/10 via-charcoal to-obsidian border border-orange-500/20 p-8 sm:p-12">
+        <div class="absolute top-0 right-0 w-64 h-64 bg-orange-500/5 rounded-full blur-3xl"></div>
+        <div class="absolute bottom-0 left-0 w-48 h-48 bg-orange-500/5 rounded-full blur-2xl"></div>
+        <div class="relative z-10 flex flex-col sm:flex-row items-center gap-8">
+          <div class="flex-1">
+            <div class="inline-flex items-center gap-2 px-3 py-1.5 bg-citrine/10 border border-citrine/20 rounded-full mb-4">
+              <i data-lucide="gift" class="w-3.5 h-3.5 text-citrine"></i>
+              <span class="text-xs font-semibold text-citrine uppercase tracking-wider">Referral Program</span>
+            </div>
+            <h2 class="font-display text-3xl sm:text-4xl font-bold tracking-tight mb-3">Earn <span class="text-citrine">₦2,000</span> Per Referral</h2>
+            <p class="text-neutral-400 leading-relaxed max-w-lg">Invite friends to TrendMallz and earn ₦2,000 for every friend who signs up and makes their first purchase. No limits!</p>
+            <div class="flex flex-wrap gap-6 mt-5 text-sm text-neutral-500">
+              <div class="flex items-center gap-2"><i data-lucide="check-circle" class="w-4 h-4 text-citrine"></i>Unlimited referrals</div>
+              <div class="flex items-center gap-2"><i data-lucide="check-circle" class="w-4 h-4 text-citrine"></i>Instant credit</div>
+              <div class="flex items-center gap-2"><i data-lucide="check-circle" class="w-4 h-4 text-citrine"></i>Withdraw anytime</div>
+            </div>
+          </div>
+          <div class="shrink-0">
+            <button onclick="showReferralPage()" class="px-8 py-4 bg-citrine text-obsidian font-bold rounded-xl hover:bg-citrine-dark transition-colors text-sm uppercase tracking-wider">Get Your Link</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FASHIONAI PROMO BANNER -->
+  <section class="py-16 sm:py-20">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6">
+      <div class="relative rounded-3xl overflow-hidden border border-orange-500/20 bg-gradient-to-br from-obsidian via-charcoal to-obsidian p-8 sm:p-12">
+        <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_60%_50%,rgba(255,107,0,0.08),transparent_65%)]"></div>
+        <div class="absolute top-0 right-0 w-80 h-80 opacity-10" style="background:radial-gradient(circle,#FF6B00,transparent 70%)"></div>
+        <!-- Floating silhouettes -->
+        <div class="absolute top-8 right-16 float-1 opacity-20"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#FF6B00" stroke-width="1.2"><path d="M20.38 3.46L16 2a4 4 0 01-8 0L3.62 3.46a2 2 0 00-1.34 2.23l.58 3.57a1 1 0 00.99.84H6v10c0 1.1.9 2 2 2h8a2 2 0 002-2V10h2.15a1 1 0 00.99-.84l.58-3.57a2 2 0 00-1.34-2.23z"/></svg></div>
+        <div class="absolute top-20 right-36 float-2 opacity-15"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#FF6B00" stroke-width="1.2"><path d="M3 7h4l2 9h10l2-9h-2M8 16v4M16 16v4M12 7V3"/></svg></div>
+        <div class="absolute bottom-8 right-24 float-1 opacity-20"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#FF6B00" stroke-width="1.2"><circle cx="12" cy="8" r="4"/><path d="M6 20v-1a6 6 0 0112 0v1"/></svg></div>
+        <div class="relative z-10 flex flex-col sm:flex-row items-center gap-10">
+          <div class="flex-1">
+            <div class="inline-flex items-center gap-2 px-3 py-1.5 bg-citrine/10 border border-citrine/25 rounded-full mb-4">
+              <span class="live-dot"></span>
+              <span class="text-xs font-semibold text-citrine uppercase tracking-wider">New · AI Try-On Studio</span>
+            </div>
+            <h2 class="font-display text-3xl sm:text-4xl font-bold tracking-tight leading-tight mb-3">
+              See Yourself in<br><span class="gradient-text">Any Outfit</span> — Instantly
+            </h2>
+            <p class="text-neutral-400 leading-relaxed max-w-lg mb-5">Upload your photo, get a personalised 3D bitmoji, and try on any brand's collection before you buy. Zero guessing. Pure style.</p>
+            <div class="flex flex-wrap gap-5 text-sm text-neutral-500 mb-6">
+              <div class="flex items-center gap-2"><i data-lucide="scan-face" class="w-4 h-4 text-citrine"></i>AI body scan</div>
+              <div class="flex items-center gap-2"><i data-lucide="shirt" class="w-4 h-4 text-citrine"></i>Real brand designs</div>
+              <div class="flex items-center gap-2"><i data-lucide="rotate-3d" class="w-4 h-4 text-citrine"></i>360° 3D view</div>
+              <div class="flex items-center gap-2"><i data-lucide="share-2" class="w-4 h-4 text-citrine"></i>Save &amp; share</div>
+            </div>
+            <button onclick="showPage('fashionai')" class="btn-fire inline-flex items-center gap-2 px-8 py-4 text-white font-semibold rounded-xl text-sm uppercase tracking-wider">
+              <span>Try It Free</span>
+              <i data-lucide="arrow-right" class="w-4 h-4"></i>
+            </button>
+          </div>
+          <!-- Preview mockup -->
+          <div class="shrink-0 flex gap-3">
+            <div class="w-28 bg-charcoal-light border border-charcoal-border rounded-2xl overflow-hidden" style="box-shadow:0 0 30px rgba(255,107,0,0.12)">
+              <div class="h-36 bg-gradient-to-b from-orange-900/30 to-obsidian flex items-end justify-center pb-2">
+                <svg width="52" height="80" viewBox="0 0 52 80" fill="none" xmlns="http://www.w3.org/2000/svg" opacity=".55"><circle cx="26" cy="14" r="10" fill="#c68642"/><rect x="14" y="26" width="24" height="28" rx="4" fill="#333"/><rect x="8" y="52" width="14" height="20" rx="3" fill="#222"/><rect x="30" y="52" width="14" height="20" rx="3" fill="#222"/></svg>
+              </div>
+              <div class="p-2 text-center">
+                <div class="text-[10px] text-citrine font-semibold">You</div>
+                <div class="text-[9px] text-neutral-600 mt-0.5">Original</div>
+              </div>
+            </div>
+            <div class="self-center text-citrine text-xl font-bold">→</div>
+            <div class="w-28 bg-charcoal-light border border-orange-500/40 rounded-2xl overflow-hidden glow-orange-sm">
+              <div class="h-36 bg-gradient-to-b from-orange-900/40 to-obsidian flex items-end justify-center pb-2">
+                <svg width="52" height="80" viewBox="0 0 52 80" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="26" cy="14" r="10" fill="#c68642"/><path d="M20 26 Q26 30 32 26 L36 48 L16 48 Z" fill="#FF6B00"/><path d="M14 48 L10 72 L42 72 L38 48 Z" fill="#FF6B00" opacity=".8"/></svg>
+              </div>
+              <div class="p-2 text-center">
+                <div class="text-[10px] text-citrine font-semibold">AI Avatar</div>
+                <div class="text-[9px] text-neutral-600 mt-0.5">Styled</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- VENDOR CTA -->
+  <section class="py-20 sm:py-24" id="vendor-section">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6">
+      <div class="rounded-3xl overflow-hidden grid md:grid-cols-2" style="background:#0d0d0d;min-height:480px">
+
+        <!-- LEFT — CTA text (always visible) -->
+        <div class="relative flex flex-col justify-center px-8 sm:px-14 py-16 overflow-hidden">
+          <div class="absolute inset-0 pointer-events-none" style="background:radial-gradient(ellipse at 20% 60%,rgba(255,107,0,.07) 0%,transparent 65%)"></div>
+          <div class="relative z-10">
+            <div class="flex items-center gap-3 mb-8">
+              <div class="w-6 h-px" style="background:rgba(255,107,0,.55)"></div>
+              <span class="text-[10px] font-semibold uppercase tracking-[0.35em] text-neutral-600">For Vendors</span>
+            </div>
+            <h2 class="font-display text-3xl sm:text-4xl font-bold tracking-tight leading-tight">Got a Brand?<br><span class="text-citrine">Start Selling.</span></h2>
+            <p class="mt-4 text-neutral-400 leading-relaxed">Join hundreds of African fashion brands reaching thousands of customers on TrendMallz. Only 10% commission, instant payouts.</p>
+            <div class="flex flex-wrap gap-6 mt-6 text-sm text-neutral-500">
+              <div class="flex items-center gap-2"><i data-lucide="check-circle" class="w-4 h-4 text-citrine"></i>10% commission only</div>
+              <div class="flex items-center gap-2"><i data-lucide="check-circle" class="w-4 h-4 text-citrine"></i>Instant payout</div>
+              <div class="flex items-center gap-2"><i data-lucide="check-circle" class="w-4 h-4 text-citrine"></i>Free setup</div>
+            </div>
+            <button onclick="openAuthModal('signup');setSignupType('vendor')" class="inline-flex items-center gap-2 mt-8 px-8 py-4 bg-citrine text-obsidian font-semibold rounded-xl hover:bg-citrine-dark transition-colors text-sm uppercase tracking-wider">Apply Now <i data-lucide="arrow-right" class="w-4 h-4"></i></button>
+          </div>
+        </div>
+
+        <!-- RIGHT — crossfading brand images + typewriter name below (JS reveals when brands exist) -->
+        <div id="vendor-brand-right" style="display:none;flex-direction:column" class="border-l border-[#161616] overflow-hidden">
+          <!-- image area: all brand-slide images go here absolutely -->
+          <div class="relative bg-[#070707]" style="flex:1;min-height:300px">
+            <div id="vendor-brand-imgs" class="absolute inset-0 overflow-hidden"></div>
+            <!-- right-edge gradient blends into CTA panel on desktop -->
+            <div class="absolute inset-0 pointer-events-none hidden md:block" style="background:linear-gradient(to left,rgba(13,13,13,0) 70%,#0d0d0d 100%)"></div>
+            <!-- dot indicators -->
+            <div class="absolute bottom-4 left-5 flex gap-2 z-10" id="vendor-brand-dots"></div>
+          </div>
+          <!-- name strip -->
+          <div class="px-8 py-6 border-t border-[#161616]" style="background:#0a0a0a;flex-shrink:0">
+            <p class="text-[10px] uppercase tracking-[0.28em] text-neutral-700 mb-2">Selling on TrendMallz</p>
+            <h3 class="font-display font-bold italic text-white" style="font-size:clamp(1.5rem,2.5vw,2.2rem);line-height:1.1">
+              <span id="vendor-brand-tw"></span><span class="text-citrine not-italic" style="animation:cursorBlink .85s step-end infinite">_</span>
+            </h3>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer class="bg-obsidian border-t border-charcoal-border mt-12">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 py-16">
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-8 md:gap-12">
+        <div class="col-span-2 md:col-span-1">
+          <span class="font-display font-bold text-2xl tracking-tight"><span class="text-citrine">Trend</span>Mallz</span>
+          <p class="mt-4 text-sm text-neutral-500 leading-relaxed">Africa's premier multi-vendor fashion marketplace.</p>
+          <div class="flex gap-3 mt-6">
+            <a href="https://www.instagram.com/trend_mallz?igsh=MXNmbjFvazJ6dHo2ZQ==&utm_source=ig_contact_invite" target="_blank" rel="noopener noreferrer" class="w-9 h-9 rounded-full bg-charcoal hover:bg-charcoal-light flex items-center justify-center text-neutral-500 hover:text-citrine transition-colors" title="Follow us on Instagram @trend_mallz"><i data-lucide="instagram" class="w-4 h-4"></i></a>
+            <a href="#" class="w-9 h-9 rounded-full bg-charcoal hover:bg-charcoal-light flex items-center justify-center text-neutral-500 hover:text-citrine transition-colors"><i data-lucide="twitter" class="w-4 h-4"></i></a>
+            <a href="#" class="w-9 h-9 rounded-full bg-charcoal hover:bg-charcoal-light flex items-center justify-center text-neutral-500 hover:text-citrine transition-colors"><i data-lucide="facebook" class="w-4 h-4"></i></a>
+          </div>
+          <a href="https://www.instagram.com/trend_mallz?igsh=MXNmbjFvazJ6dHo2ZQ==&utm_source=ig_contact_invite" target="_blank" rel="noopener noreferrer" class="mt-4 flex items-center gap-2 text-xs text-neutral-500 hover:text-citrine transition-colors group">
+            <svg class="w-4 h-4 flex-shrink-0 group-hover:text-citrine" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg>
+            <span>DM us <span class="text-citrine font-semibold">@trend_mallz</span></span>
+          </a>
+        </div>
+        <div>
+          <h4 class="font-display font-semibold text-sm uppercase tracking-widest text-neutral-400 mb-4">Shop</h4>
+          <ul class="space-y-3">
+            <li><button onclick="showPage('shop')" class="text-sm text-neutral-500 hover:text-citrine transition-colors">All Products</button></li>
+            <li><button onclick="filterCategory('Streetwear');showPage('shop')" class="text-sm text-neutral-500 hover:text-citrine transition-colors">Streetwear</button></li>
+            <li><button onclick="filterCategory('African Wear');showPage('shop')" class="text-sm text-neutral-500 hover:text-citrine transition-colors">African Wear</button></li>
+            <li><button onclick="filterCategory('Evening Wear');showPage('shop')" class="text-sm text-neutral-500 hover:text-citrine transition-colors">Evening Wear</button></li>
+          </ul>
+        </div>
+        <div>
+          <h4 class="font-display font-semibold text-sm uppercase tracking-widest text-neutral-400 mb-4">Brands</h4>
+          <ul class="space-y-3">
+            <li><button onclick="showPage('brands')" class="text-sm text-neutral-500 hover:text-citrine transition-colors">All Brands</button></li>
+            <li><button onclick="activeBrands.clear();activeBrands.add('FLY');showPage('shop')" class="text-sm text-neutral-500 hover:text-citrine transition-colors">FLY</button></li>
+            <li><button onclick="activeBrands.clear();activeBrands.add('Calvary');showPage('shop')" class="text-sm text-neutral-500 hover:text-citrine transition-colors">Calvary</button></li>
+            <li><button onclick="activeBrands.clear();activeBrands.add(&quot;Magg&apos;s store&quot;);showPage('shop')" class="text-sm text-neutral-500 hover:text-citrine transition-colors">Magg's store</button></li>
+          </ul>
+        </div>
+        <div>
+          <h4 class="font-display font-semibold text-sm uppercase tracking-widest text-neutral-400 mb-4">Support</h4>
+          <ul class="space-y-3">
+            <li><a href="#" class="text-sm text-neutral-500 hover:text-citrine transition-colors">Help Center</a></li>
+            <li><button onclick="openAuthModal('signup');setSignupType('vendor')" class="text-sm text-neutral-500 hover:text-citrine transition-colors">Sell on TrendMallz</button></li>
+            <li><a href="#" class="text-sm text-neutral-500 hover:text-citrine transition-colors">Shipping Info</a></li>
+            <li><a href="#" class="text-sm text-neutral-500 hover:text-citrine transition-colors">Returns Policy</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="border-t border-charcoal-border mt-12 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+        <p class="text-xs text-neutral-600">&copy; 2025 TrendMallz. All rights reserved.</p>
+        <div class="flex items-center gap-4 text-xs text-neutral-600">
+          <a href="https://www.instagram.com/trend_mallz?igsh=MXNmbjFvazJ6dHo2ZQ==&utm_source=ig_contact_invite" target="_blank" rel="noopener noreferrer" class="flex items-center gap-1.5 hover:text-citrine transition-colors">
+            <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg>
+            @trend_mallz
+          </a>
+          <span class="flex items-center gap-1"><i data-lucide="shield-check" class="w-3 h-3"></i>Paystack Secured</span>
+          <span class="flex items-center gap-1"><i data-lucide="lock" class="w-3 h-3"></i>SSL Encrypted</span>
+        </div>
+      </div>
+    </div>
+  </footer>
+</div>
+
+<!-- =================== SHOP PAGE =================== -->
+<div class="page" id="page-shop">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 py-10">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+      <div>
+        <h1 class="font-display text-3xl font-bold">All Products</h1>
+        <p id="shop-filter-label" class="text-neutral-500 text-sm mt-1">Browse our full collection</p>
+      </div>
+      <div class="flex items-center gap-3">
+        <select id="shop-sort" onchange="renderShopGrid()" class="px-4 py-2.5 bg-charcoal border border-charcoal-border rounded-xl text-sm focus:border-citrine">
+          <option value="default">Sort: Featured</option>
+          <option value="price-asc">Price: Low to High</option>
+          <option value="price-desc">Price: High to Low</option>
+          <option value="rating">Top Rated</option>
+          <option value="newest">Newest</option>
+        </select>
+        <button onclick="toggleShopFilters()" class="flex items-center gap-2 px-4 py-2.5 bg-charcoal border border-charcoal-border rounded-xl text-sm hover:border-citrine transition-colors">
+          <i data-lucide="sliders" class="w-4 h-4"></i>Filters
+        </button>
+      </div>
+    </div>
+    <div class="flex gap-6">
+      <!-- Sidebar filters -->
+      <div id="shop-filters-sidebar" class="hidden lg:block w-64 shrink-0">
+        <div class="bg-charcoal rounded-2xl p-5 sticky top-24 space-y-6">
+          <div>
+            <h4 class="font-semibold text-sm mb-3">Category</h4>
+            <div class="space-y-2" id="category-filters"></div>
+          </div>
+          <div>
+            <h4 class="font-semibold text-sm mb-3">Brand</h4>
+            <div class="space-y-2" id="brand-filters"></div>
+          </div>
+          <div>
+            <h4 class="font-semibold text-sm mb-3">Price Range</h4>
+            <div class="flex gap-2">
+              <input id="price-min" type="number" placeholder="Min" class="w-full px-3 py-2 bg-obsidian border border-charcoal-border rounded-xl text-xs focus:border-citrine">
+              <input id="price-max" type="number" placeholder="Max" class="w-full px-3 py-2 bg-obsidian border border-charcoal-border rounded-xl text-xs focus:border-citrine">
+            </div>
+            <button onclick="renderShopGrid()" class="mt-3 w-full py-2 bg-citrine text-obsidian text-xs font-bold rounded-xl">Apply</button>
+          </div>
+          <button onclick="resetFilters()" class="w-full py-2 border border-charcoal-border rounded-xl text-xs text-neutral-500 hover:text-white hover:border-neutral-500 transition-colors">Reset Filters</button>
+        </div>
+      </div>
+      <!-- Grid -->
+      <div class="flex-1">
+        <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-5" id="shop-grid"></div>
+        <div id="shop-empty" class="hidden text-center py-20 text-neutral-500">
+          <i data-lucide="search-x" class="w-12 h-12 mx-auto mb-4 opacity-30"></i>
+          <p class="text-lg font-medium">No products found</p>
+          <button onclick="resetFilters()" class="mt-4 px-6 py-2.5 bg-citrine text-obsidian text-sm font-bold rounded-xl">Clear Filters</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- =================== BRANDS PAGE =================== -->
+<div class="page" id="page-brands">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 py-10">
+    <div class="mb-8">
+      <h1 class="font-display text-3xl font-bold">All Brands</h1>
+      <p class="text-neutral-500 text-sm mt-1">Discover Africa's finest fashion labels</p>
+    </div>
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5" id="brands-grid"></div>
+  </div>
+</div>
+
+<!-- =================== WISHLIST PAGE =================== -->
+<div class="page" id="page-wishlist">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 py-10">
+    <div class="flex items-center gap-4 mb-8">
+      <button onclick="showPage('home')" class="p-2 rounded-xl bg-charcoal hover:bg-charcoal-light transition-colors"><i data-lucide="arrow-left" class="w-5 h-5"></i></button>
+      <div><h1 class="font-display text-3xl font-bold">Wishlist</h1><p class="text-neutral-500 text-sm mt-1">Your saved items</p></div>
+    </div>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-5" id="wishlist-grid"></div>
+    <div id="wishlist-empty" class="hidden text-center py-20">
+      <i data-lucide="heart" class="w-12 h-12 mx-auto mb-4 text-neutral-700"></i>
+      <p class="text-neutral-500">No saved items yet</p>
+      <button onclick="showPage('shop')" class="mt-4 px-6 py-2.5 bg-citrine text-obsidian text-sm font-bold rounded-xl">Browse Products</button>
+    </div>
+  </div>
+</div>
+
+<!-- =================== ORDERS PAGE =================== -->
+<div class="page" id="page-orders-page">
+  <div class="max-w-4xl mx-auto px-4 sm:px-6 py-10">
+    <div class="flex items-center gap-4 mb-8">
+      <button onclick="showPage('home')" class="p-2 rounded-xl bg-charcoal hover:bg-charcoal-light transition-colors"><i data-lucide="arrow-left" class="w-5 h-5"></i></button>
+      <div><h1 class="font-display text-3xl font-bold">My Orders</h1><p class="text-neutral-500 text-sm mt-1">Track your purchases</p></div>
+    </div>
+    <div id="orders-list" class="space-y-4"></div>
+    <div id="orders-empty" class="hidden text-center py-20">
+      <i data-lucide="package" class="w-12 h-12 mx-auto mb-4 text-neutral-700"></i>
+      <p class="text-neutral-500">No orders yet</p>
+      <button onclick="showPage('shop')" class="mt-4 px-6 py-2.5 bg-citrine text-obsidian text-sm font-bold rounded-xl">Start Shopping</button>
+    </div>
+  </div>
+</div>
+
+<!-- =================== REFERRAL PAGE =================== -->
+<div class="page" id="page-referral">
+  <div class="max-w-3xl mx-auto px-4 sm:px-6 py-10">
+    <div class="flex items-center gap-4 mb-8">
+      <button onclick="history.back() || showPage('home')" class="p-2 rounded-xl bg-charcoal hover:bg-charcoal-light transition-colors"><i data-lucide="arrow-left" class="w-5 h-5"></i></button>
+      <div><h1 class="font-display text-3xl font-bold">Referral Program</h1><p class="text-neutral-500 text-sm mt-1">Earn money by inviting friends</p></div>
+    </div>
+    <div id="referral-content"></div>
+  </div>
+</div>
+
+<!-- =================== CHECKOUT PAGE =================== -->
+<div class="page" id="page-checkout">
+  <div class="max-w-5xl mx-auto px-4 sm:px-6 py-10">
+    <div class="flex items-center gap-4 mb-8">
+      <button onclick="toggleCart(true);showPage('home')" class="p-2 rounded-xl bg-charcoal hover:bg-charcoal-light transition-colors"><i data-lucide="arrow-left" class="w-5 h-5"></i></button>
+      <div><h1 class="font-display text-3xl font-bold">Checkout</h1><p class="text-neutral-500 text-sm mt-1">Complete your purchase</p></div>
+    </div>
+    <div id="checkout-content"></div>
+  </div>
+</div>
+
+<!-- =================== CUSTOMER DASHBOARD =================== -->
+<div class="page" id="page-dashboard">
+  <div class="flex min-h-screen" style="padding-top:0">
+    <!-- Sidebar -->
+    <div class="hidden lg:flex flex-col w-64 bg-charcoal border-r border-charcoal-border fixed left-0 top-16 sm:top-20 bottom-0 overflow-y-auto p-4">
+      <div id="dash-user-info" class="mb-6 p-3"></div>
+      <nav class="space-y-1" id="dash-nav"></nav>
+    </div>
+    <!-- Content -->
+    <div class="flex-1 lg:ml-64 p-4 sm:p-8">
+      <div id="dash-content"></div>
+    </div>
+  </div>
+</div>
+
+<!-- =================== FASHIONAI PAGE =================== -->
+<div class="page" id="page-fashionai">
+  <!-- Page Header -->
+  <div class="border-b border-charcoal-border bg-obsidian/80 backdrop-blur-sm sticky top-16 sm:top-20 z-30">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6">
+      <div class="flex items-center gap-4 py-4">
+        <button onclick="showPage('home')" class="p-2 rounded-xl bg-charcoal hover:bg-charcoal-light transition-colors shrink-0"><i data-lucide="arrow-left" class="w-5 h-5"></i></button>
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2">
+            <h1 class="font-display text-xl sm:text-2xl font-bold tracking-tight">AI Try-On Studio</h1>
+            <span class="badge badge-yellow hidden sm:inline-flex">Beta</span>
+          </div>
+          <p class="text-neutral-500 text-xs mt-0.5 hidden sm:block">Upload · Scan · Style · Share</p>
+        </div>
+        <!-- Step pills -->
+        <div class="hidden md:flex items-center gap-1" id="ai-step-bar">
+          <div class="ai-step-pill active" id="asp-1" onclick="">
+            <span class="asp-num">1</span><span class="asp-lbl">Upload</span>
+          </div>
+          <div class="w-4 h-px bg-charcoal-border mx-1"></div>
+          <div class="ai-step-pill" id="asp-2"><span class="asp-num">2</span><span class="asp-lbl">Analyse</span></div>
+          <div class="w-4 h-px bg-charcoal-border mx-1"></div>
+          <div class="ai-step-pill" id="asp-3"><span class="asp-num">3</span><span class="asp-lbl">Avatar</span></div>
+          <div class="w-4 h-px bg-charcoal-border mx-1"></div>
+          <div class="ai-step-pill" id="asp-4"><span class="asp-num">4</span><span class="asp-lbl">Style</span></div>
+          <div class="w-4 h-px bg-charcoal-border mx-1"></div>
+          <div class="ai-step-pill" id="asp-5"><span class="asp-num">5</span><span class="asp-lbl">Share</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 py-8">
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+      <!-- ── LEFT: Upload + Viewer ── -->
+      <div class="lg:col-span-2 space-y-6">
+
+        <!-- STEP 1: Upload (shown first) -->
+        <div id="ai-step-upload">
+          <div class="flex items-center justify-between mb-4">
+            <div>
+              <p class="text-[10px] font-semibold text-citrine uppercase tracking-widest mb-0.5">Step 1</p>
+              <h2 class="font-display text-2xl font-bold">Create Your 3D Bitmoji</h2>
+            </div>
+            <svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="11" cy="7" r="4" fill="#FF6B00"/><rect x="5" y="12" width="12" height="7" rx="3" fill="#FF6B00" opacity=".7"/></svg>
+          </div>
+
+          <!-- Appearance Customiser -->
+          <div class="appear-panel mb-4">
+            <p class="text-[10px] font-semibold uppercase tracking-widest text-neutral-500 mb-3">Appearance</p>
+            <div class="flex items-center gap-3">
+              <span class="text-xs text-neutral-400 w-16 shrink-0">Hair colour</span>
+              <div class="flex gap-2 flex-wrap" id="hair-swatches">
+                <div class="appear-swatch sel" style="background:#1a1a1a" onclick="aiSetHair('#1a1a1a',this)" title="Black"></div>
+                <div class="appear-swatch" style="background:#3b2314" onclick="aiSetHair('#3b2314',this)" title="Dark brown"></div>
+                <div class="appear-swatch" style="background:#7c4b2a" onclick="aiSetHair('#7c4b2a',this)" title="Brown"></div>
+                <div class="appear-swatch" style="background:#b5874a" onclick="aiSetHair('#b5874a',this)" title="Caramel"></div>
+                <div class="appear-swatch" style="background:#d4af37" onclick="aiSetHair('#d4af37',this)" title="Blonde"></div>
+                <div class="appear-swatch" style="background:#c0392b" onclick="aiSetHair('#c0392b',this)" title="Auburn"></div>
+                <div class="appear-swatch" style="background:#888" onclick="aiSetHair('#888',this)" title="Grey"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Divider -->
+          <div class="flex items-center gap-3 my-4">
+            <div class="flex-1 h-px bg-charcoal-border"></div>
+            <span class="text-[10px] font-semibold text-neutral-600 uppercase tracking-widest">or upload full-body photo</span>
+            <div class="flex-1 h-px bg-charcoal-border"></div>
+          </div>
+
+          <div id="ai-upload-zone" onclick="document.getElementById('ai-file-input').click()"
+               ondragover="aiHandleDrag(event)" ondrop="aiHandleDrop(event)" ondragleave="this.classList.remove('drag')">
+            <input type="file" id="ai-file-input" accept="image/*" onchange="aiHandleFile(event)" style="display:none"/>
+            <div style="width:64px;height:64px;border:1.5px solid rgba(255,107,0,.35);border-radius:16px;display:flex;align-items:center;justify-content:center;margin-bottom:1.2rem"><i data-lucide="camera" style="width:28px;height:28px;color:#FF6B00;opacity:.7"></i></div>
+            <h3 class="font-display text-lg font-bold mb-2">Drop your full body photo</h3>
+            <p class="text-neutral-500 text-sm text-center max-w-xs leading-relaxed">Stand straight, full body visible. Best results on plain backgrounds. JPG or PNG.</p>
+            <div class="flex gap-3 mt-6 text-xs text-neutral-600">
+              <span class="px-3 py-1.5 bg-charcoal rounded-lg">✓ Clear full body</span>
+              <span class="px-3 py-1.5 bg-charcoal rounded-lg">✓ Good lighting</span>
+              <span class="px-3 py-1.5 bg-charcoal rounded-lg">✓ Front facing</span>
+            </div>
+          </div>
+
+          <!-- AI Pipeline Steps -->
+          <div id="ai-pipeline" style="display:none;margin-top:1.5rem">
+            <p class="text-[10px] font-semibold uppercase tracking-widest text-neutral-600 mb-3">AI Processing</p>
+            <div class="space-y-2.5">
+              <div class="ai-ps" id="ai-ps-0">
+                <div class="ai-ps-icon"><i data-lucide="scissors" class="w-4 h-4"></i></div>
+                <div style="flex:1">
+                  <div style="font-size:.82rem;font-weight:500">Background removal</div>
+                  <div style="font-size:.7rem;color:#525252;margin-top:.15rem">Isolating your figure with AI segmentation</div>
+                  <div class="ai-pbar"><div class="ai-pbar-fill" id="ai-pb-0"></div></div>
+                </div>
+                <div style="font-size:.7rem" id="ai-pst-0">Waiting</div>
+              </div>
+              <div class="ai-ps" id="ai-ps-1">
+                <div class="ai-ps-icon"><i data-lucide="scan-face" class="w-4 h-4"></i></div>
+                <div style="flex:1">
+                  <div style="font-size:.82rem;font-weight:500">Body pose estimation</div>
+                  <div style="font-size:.7rem;color:#525252;margin-top:.15rem">Detecting 33 skeletal landmarks via MediaPipe</div>
+                  <div class="ai-pbar"><div class="ai-pbar-fill" id="ai-pb-1"></div></div>
+                </div>
+                <div style="font-size:.7rem" id="ai-pst-1">Waiting</div>
+              </div>
+              <div class="ai-ps" id="ai-ps-2">
+                <div class="ai-ps-icon"><i data-lucide="ruler" class="w-4 h-4"></i></div>
+                <div style="flex:1">
+                  <div style="font-size:.82rem;font-weight:500">Body measurement extraction</div>
+                  <div style="font-size:.7rem;color:#525252;margin-top:.15rem">Shoulder width · torso ratio · leg proportions</div>
+                  <div class="ai-pbar"><div class="ai-pbar-fill" id="ai-pb-2"></div></div>
+                </div>
+                <div style="font-size:.7rem" id="ai-pst-2">Waiting</div>
+              </div>
+              <div class="ai-ps" id="ai-ps-3">
+                <div class="ai-ps-icon"><i data-lucide="box" class="w-4 h-4"></i></div>
+                <div style="flex:1">
+                  <div style="font-size:.82rem;font-weight:500">3D bitmoji avatar generation</div>
+                  <div style="font-size:.7rem;color:#525252;margin-top:.15rem">Building your high-quality personalised 3D model</div>
+                  <div class="ai-pbar"><div class="ai-pbar-fill" id="ai-pb-3"></div></div>
+                </div>
+                <div style="font-size:.7rem" id="ai-pst-3">Waiting</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Body Stats (shown after processing) -->
+          <div id="ai-body-stats" style="display:none;margin-top:1.2rem">
+            <p class="text-[10px] font-semibold uppercase tracking-widest text-neutral-600 mb-2.5">Body Analysis Results</p>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:.65rem">
+              <div class="ai-stat"><div class="ai-stat-val" id="ai-bs-height">—</div><div class="ai-stat-lbl">Height</div></div>
+              <div class="ai-stat"><div class="ai-stat-val" id="ai-bs-shoulder">—</div><div class="ai-stat-lbl">Shoulders</div></div>
+              <div class="ai-stat"><div class="ai-stat-val" id="ai-bs-build">—</div><div class="ai-stat-lbl">Build</div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- STEP 3: 3D Avatar Viewer (hidden until ready) -->
+        <div id="ai-viewer-section" style="display:none">
+          <div class="flex items-center justify-between mb-4">
+            <div>
+              <p class="text-[10px] font-semibold text-citrine uppercase tracking-widest mb-0.5">Step 3 → 4</p>
+              <h2 class="font-display text-2xl font-bold">Your 3D Bitmoji</h2>
+            </div>
+            <div class="flex items-center gap-2">
+              <button id="ai-mode-toggle" onclick="aiToggleViewMode()" class="text-xs text-neutral-400 hover:text-citrine border border-charcoal-border hover:border-citrine/40 px-3 py-1.5 rounded-xl transition-colors flex items-center gap-1.5">
+                <i data-lucide="camera" class="w-3.5 h-3.5"></i><span id="ai-mode-label">Photo Mode</span>
+              </button>
+              <button onclick="aiResetAll()" class="text-xs text-neutral-500 hover:text-white border border-charcoal-border px-3 py-1.5 rounded-xl transition-colors flex items-center gap-1.5">
+                <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>New Photo
+              </button>
+            </div>
+          </div>
+
+          <div id="ai-canvas-wrap">
+            <canvas id="ai-avatar-canvas"></canvas>
+            <div class="ai-viewer-hint" id="ai-viewer-hint-text">3D Bitmoji · Drag to rotate · Scroll to zoom</div>
+          </div>
+
+          <!-- Outfit summary -->
+          <div style="margin-top:1rem;padding:1rem 1.2rem;border:1px solid rgba(255,107,0,.2);border-radius:14px;background:rgba(255,107,0,.03)">
+            <p style="font-size:.65rem;letter-spacing:.15em;text-transform:uppercase;color:#FF6B00;margin-bottom:.4rem">Current Outfit</p>
+            <p id="ai-outfit-summary" style="font-size:.82rem;color:#525252">Select items from the Brand Catalogue →</p>
+          </div>
+
+          <!-- Export (shown after outfit applied) -->
+          <div id="ai-export-wrap" style="display:none;margin-top:1rem">
+            <p class="text-[10px] font-semibold uppercase tracking-widest text-neutral-600 mb-2">Save &amp; Share Your Look</p>
+            <div style="display:flex;gap:.5rem">
+              <div class="ai-export-btn" onclick="aiExportPNG()"><i data-lucide="download" class="w-3.5 h-3.5 inline mr-1"></i>Save PNG</div>
+              <div class="ai-export-btn" onclick="aiShowQR()"><i data-lucide="qr-code" class="w-3.5 h-3.5 inline mr-1"></i>QR Code</div>
+              <div class="ai-export-btn" onclick="aiCopyLink()"><i data-lucide="link" class="w-3.5 h-3.5 inline mr-1"></i>Share</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── RIGHT: Clothing Sidebar ── -->
+      <div class="lg:col-span-1">
+
+        <!-- Placeholder before avatar ready -->
+        <div id="ai-sidebar-ph" class="text-center py-12 px-4">
+          <div style="margin-bottom:1rem;display:flex;justify-content:center"><svg width="52" height="80" viewBox="0 0 52 80" fill="none"><circle cx="26" cy="14" r="9" fill="rgba(255,107,0,.35)"/><path d="M10 32 L18 24 L26 28 L34 24 L42 32 L38 60 L14 60 Z" fill="rgba(255,107,0,.18)" stroke="rgba(255,107,0,.4)" stroke-width="1.2"/><rect x="18" y="60" width="6" height="14" rx="2" fill="rgba(255,107,0,.18)" stroke="rgba(255,107,0,.4)" stroke-width="1.2"/><rect x="28" y="60" width="6" height="14" rx="2" fill="rgba(255,107,0,.18)" stroke="rgba(255,107,0,.4)" stroke-width="1.2"/></svg></div>
+          <h3 class="font-display text-lg font-bold mb-2">Brand Catalogue</h3>
+          <p class="text-neutral-500 text-sm leading-relaxed">Upload your photo to unlock the full brand clothing catalogue and try outfits in 3D on your avatar.</p>
+          <div class="mt-6 space-y-2">
+            <div style="padding:.75rem 1rem;background:#111;border:1px solid #1a1a1a;border-radius:12px;font-size:.78rem;color:#525252">FLY · Streetwear</div>
+            <div style="padding:.75rem 1rem;background:#111;border:1px solid #1a1a1a;border-radius:12px;font-size:.78rem;color:#525252">Calvary · Streetwear</div>
+            <div style="padding:.75rem 1rem;background:#111;border:1px solid #1a1a1a;border-radius:12px;font-size:.78rem;color:#525252">Magg's store · African Wear</div>
+            <div style="padding:.75rem 1rem;background:#111;border:1px solid #1a1a1a;border-radius:12px;font-size:.78rem;color:#525252">+ more brands</div>
+          </div>
+        </div>
+
+        <!-- Clothing Selector (shown when avatar ready) -->
+        <div id="ai-cloth-selector" style="display:none">
+          <p class="text-[10px] font-semibold text-citrine uppercase tracking-widest mb-4">Choose Your Outfit</p>
+
+          <!-- Shirts -->
+          <div style="margin-bottom:1.5rem">
+            <div class="ai-cat-lbl">Shirts &amp; Tops</div>
+            <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:.55rem" id="ai-grid-shirts"></div>
+          </div>
+          <!-- Trousers -->
+          <div style="margin-bottom:1.5rem">
+            <div class="ai-cat-lbl">Trousers</div>
+            <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:.55rem" id="ai-grid-trousers"></div>
+          </div>
+          <!-- Shoes -->
+          <div style="margin-bottom:1.5rem">
+            <div class="ai-cat-lbl">Shoes</div>
+            <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:.55rem" id="ai-grid-shoes"></div>
+          </div>
+          <!-- Caps -->
+          <div style="margin-bottom:1.5rem">
+            <div class="ai-cat-lbl">Caps &amp; Hats</div>
+            <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:.55rem" id="ai-grid-caps"></div>
+          </div>
+
+          <div style="height:1px;background:#1a1a1a;margin:1rem 0"></div>
+          <button class="ai-btn-primary" onclick="aiApplyOutfit()">Apply Outfit to Avatar</button>
+          <button class="ai-btn-secondary" onclick="aiRandomOutfit()">✦ Surprise Me</button>
+
+          <!-- Add to cart CTA -->
+          <div id="ai-add-cart-wrap" style="display:none;margin-top:1rem;padding:1rem;background:rgba(255,107,0,.06);border:1px solid rgba(255,107,0,.2);border-radius:14px">
+            <p style="font-size:.72rem;color:#FF6B00;font-weight:600;margin-bottom:.5rem">Love the look? Shop it now!</p>
+            <p style="font-size:.72rem;color:#525252;margin-bottom:.75rem" id="ai-cart-suggestion">Select items to see price</p>
+            <button class="ai-btn-primary" style="font-size:.72rem;padding:.7rem" onclick="aiShopOutfit()">
+              Shop This Outfit <i data-lucide="shopping-bag" class="w-3.5 h-3.5 inline ml-1"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- QR Modal -->
+  <div id="ai-qr-modal">
+    <div style="background:#141414;border:1px solid rgba(255,107,0,.3);border-radius:20px;padding:2rem;text-align:center;max-width:280px;width:90%">
+      <h3 class="font-display text-lg font-bold mb-3">Your Look</h3>
+      <canvas id="ai-qr-canvas" style="border-radius:10px;margin-bottom:1rem"></canvas>
+      <p style="font-size:.75rem;color:#525252;margin-bottom:1.2rem">Scan to view on your phone</p>
+      <button class="ai-btn-secondary" style="margin:0" onclick="document.getElementById('ai-qr-modal').style.display='none'">Close</button>
+    </div>
+  </div>
+</div>
+
+</div><!-- /pages-container -->
+
+<!-- ===================== VIRTUAL TRY-ON RESULT MODAL ===================== -->
+<div id="tryon-modal" class="fixed inset-0 z-[270] items-center justify-center" style="display:none">
+  <div class="absolute inset-0 bg-black/85 backdrop-blur-sm" onclick="closeTryOnModal()"></div>
+  <div class="relative z-10 w-full max-w-sm mx-4 bg-charcoal border border-orange-500/25 rounded-2xl overflow-hidden shadow-2xl">
+    <div class="flex items-center justify-between px-5 py-4 border-b border-charcoal-border">
+      <div>
+        <div class="font-display font-semibold text-sm" id="tryon-modal-title">Virtual Try-On</div>
+        <div class="text-xs text-neutral-500 mt-0.5">Powered by AI · IDM-VTON</div>
+      </div>
+      <button onclick="closeTryOnModal()" class="p-2 rounded-xl text-neutral-500 hover:text-white transition-colors">
+        <i data-lucide="x" class="w-4 h-4"></i>
+      </button>
+    </div>
+    <div class="p-5">
+      <!-- Loading -->
+      <div id="tryon-loading" class="text-center py-10">
+        <div class="relative w-16 h-16 mx-auto mb-4">
+          <div class="absolute inset-0 rounded-full border-2 border-citrine/15"></div>
+          <div class="absolute inset-0 rounded-full border-2 border-t-citrine" style="animation:spin 1s linear infinite"></div>
+        </div>
+        <p class="text-sm font-semibold mb-1">Generating your look…</p>
+        <p class="text-xs text-neutral-500" id="tryon-status-text">Starting AI model</p>
+        <p class="text-xs text-neutral-600 mt-3">Usually takes 30–60 seconds</p>
+      </div>
+      <!-- Result -->
+      <div id="tryon-result" style="display:none">
+        <img id="tryon-result-img" src="" class="w-full rounded-xl mb-4 border border-charcoal-border" alt="Try-on result"/>
+        <div class="flex gap-2">
+          <button onclick="tryonSaveImage()" class="flex-1 py-2.5 text-xs font-bold bg-citrine text-obsidian rounded-xl flex items-center justify-center gap-1.5">
+            <i data-lucide="download" class="w-3.5 h-3.5"></i>Save
+          </button>
+          <button onclick="tryonShopNow()" class="flex-1 py-2.5 text-xs font-bold border border-citrine text-citrine rounded-xl flex items-center justify-center gap-1.5">
+            <i data-lucide="shopping-bag" class="w-3.5 h-3.5"></i>Shop This
+          </button>
+        </div>
+      </div>
+      <!-- Error -->
+      <div id="tryon-error" style="display:none" class="text-center py-10">
+        <i data-lucide="alert-circle" class="w-12 h-12 mx-auto mb-3 text-red-400 opacity-50"></i>
+        <p class="text-sm font-semibold mb-1">Generation failed</p>
+        <p class="text-xs text-neutral-500 mb-4" id="tryon-error-text">Please try again</p>
+        <button onclick="closeTryOnModal()" class="px-6 py-2.5 text-xs border border-charcoal-border rounded-xl text-neutral-400 hover:text-white">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== TRY-ON SETUP MODAL ===================== -->
+<div id="tryon-setup-modal" class="fixed inset-0 z-[270] items-center justify-center" style="display:none">
+  <div class="absolute inset-0 bg-black/85 backdrop-blur-sm" onclick="document.getElementById('tryon-setup-modal').style.display='none'"></div>
+  <div class="relative z-10 w-full max-w-sm mx-4 bg-charcoal border border-orange-500/25 rounded-2xl p-6 text-center shadow-2xl">
+    <div class="w-16 h-16 rounded-full bg-citrine/10 border border-citrine/20 flex items-center justify-center mx-auto mb-4">
+      <i data-lucide="user" class="w-7 h-7 text-citrine"></i>
+    </div>
+    <h3 class="font-display font-bold text-lg mb-2">Upload Your Photo First</h3>
+    <p class="text-sm text-neutral-400 mb-2 leading-relaxed">We need a full-body photo of you to generate the try-on.</p>
+    <div class="text-xs text-neutral-600 bg-obsidian rounded-xl p-3 mb-5 text-left space-y-1">
+      <div class="flex items-center gap-2"><i data-lucide="check" class="w-3 h-3 text-citrine shrink-0"></i>Stand straight, facing camera</div>
+      <div class="flex items-center gap-2"><i data-lucide="check" class="w-3 h-3 text-citrine shrink-0"></i>Full body visible head to toe</div>
+      <div class="flex items-center gap-2"><i data-lucide="check" class="w-3 h-3 text-citrine shrink-0"></i>Plain or simple background</div>
+      <div class="flex items-center gap-2"><i data-lucide="check" class="w-3 h-3 text-citrine shrink-0"></i>Good natural lighting</div>
+    </div>
+    <label class="block w-full py-3 bg-citrine text-obsidian font-bold rounded-xl text-sm cursor-pointer hover:opacity-90 transition-opacity">
+      <i data-lucide="camera" class="w-4 h-4 inline mr-1.5"></i>Choose Full-Body Photo
+      <input type="file" accept="image/*" style="display:none" onchange="handleTryOnPhotoUpload(event)"/>
+    </label>
+    <button onclick="document.getElementById('tryon-setup-modal').style.display='none'" class="mt-3 w-full py-2 text-xs text-neutral-600 hover:text-white transition-colors">Cancel</button>
+  </div>
+</div>
+
+<!-- ===================== TOAST ===================== -->
+<div id="toast-container" class="fixed top-24 right-4 z-[300] flex flex-col gap-2"></div>
+
+<!-- ====================== SCRIPTS ====================== -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="app.js"></script>
+<script>
+var _twTimer = null;
+function startHeroTypewriter() {
+  var text = "Bringing the mall to your home. Shop Africa's finest fashion brands, try on outfits with AI, and get it delivered to your door.";
+  var el = document.getElementById("hero-typewriter");
+  var cur = document.getElementById("hero-cursor");
+  if (!el) return;
+  clearTimeout(_twTimer);
+  el.textContent = "";
+  if (cur) cur.style.display = "inline-block";
+  var i = 0;
+  var deleting = false;
+  function tick() {
+    if (!deleting) {
+      if (i <= text.length) {
+        el.textContent = text.slice(0, i++);
+        _twTimer = setTimeout(tick, i < 30 ? 42 : 30);
+      } else {
+        deleting = true;
+        _twTimer = setTimeout(tick, 2000);
+      }
+    } else {
+      if (i > 0) {
+        el.textContent = text.slice(0, --i);
+        _twTimer = setTimeout(tick, 18);
+      } else {
+        deleting = false;
+        _twTimer = setTimeout(tick, 600);
+      }
+    }
+  }
+  _twTimer = setTimeout(tick, 50);
+}
+window.addEventListener("load", function() {
+  setTimeout(startHeroTypewriter, 200);
+});
+</script>
+</body>
+</html>
