@@ -496,6 +496,145 @@ app.post('/api/update-price', (req, res) => {
   res.json({ success: true, price: p, compare: c, discount: disc });
 });
 
+// ── Nodemailer ────────────────────────────────────────────────────────────────
+const nodemailer = require('nodemailer');
+const _mailer = nodemailer.createTransport({
+  host: 'smtp.gmail.com', port: 587, secure: false,
+  auth: { user: 'trendmallz.support@gmail.com', pass: process.env.GMAIL_APP_PASSWORD || '' }
+});
+
+// ── User store ────────────────────────────────────────────────────────────────
+const _usersFile = path.join(__dirname, 'users.json');
+const _DEMO_USERS = [
+  { id:'u1', email:'customer@demo.com', passwordHash:'demo', salt:'demo', fname:'Emeka', lname:'Johnson', role:'customer', countryCode:'NG', referralCode:'REF-EJ2024', wallet:6500, referralEarnings:4000, referralCount:2, orders:['o1','o2'], createdAt:'2024-01-15', verified:true },
+  { id:'u2', email:'vendor@demo.com', passwordHash:'demo', salt:'demo', fname:'Adaeze', lname:'Obi', role:'vendor', countryCode:'NG', brandName:'NOX Apparel', referralCode:'REF-AO2024', wallet:185000, referralEarnings:0, referralCount:0, orders:[], storeSales:12, storeRevenue:285000, commissionPaid:28500, createdAt:'2023-11-01', verified:true },
+  { id:'u3', email:'admin@trendmallz.com', passwordHash:'demo', salt:'demo', fname:'Admin', lname:'TrendMallz', role:'admin', countryCode:'NG', referralCode:'REF-ADMIN', wallet:0, orders:[], totalCommission:85000, totalOrders:142, totalRevenue:950000, createdAt:'2023-01-01', verified:true }
+];
+function _loadUsers() {
+  try { return JSON.parse(fs.readFileSync(_usersFile, 'utf8')); } catch (_x) { return []; }
+}
+function _saveUsers(arr) {
+  try { fs.writeFileSync(_usersFile, JSON.stringify(arr, null, 2)); } catch (_x) {}
+}
+function _findUser(email) {
+  const demo = _DEMO_USERS.find(u => u.email === email);
+  if (demo) return demo;
+  return _loadUsers().find(u => u.email === email) || null;
+}
+function _hashPass(pass, salt) {
+  return crypto.scryptSync(pass, salt, 64).toString('hex');
+}
+function _toSessionUser(u) {
+  return {
+    id: u.id, fname: u.fname, lname: u.lname, email: u.email,
+    role: u.role, brandName: u.brandName || '', wallet: u.wallet || 0,
+    countryCode: u.countryCode || 'NG', referralCode: u.referralCode || '',
+    referralEarnings: u.referralEarnings || 0, referralCount: u.referralCount || 0,
+    orders: u.orders || [],
+    ...(u.role === 'vendor' ? { storeSales: u.storeSales || 0, storeRevenue: u.storeRevenue || 0, commissionPaid: u.commissionPaid || 0 } : {}),
+    ...(u.role === 'admin' ? { totalCommission: u.totalCommission || 0, totalOrders: u.totalOrders || 0, totalRevenue: u.totalRevenue || 0 } : {})
+  };
+}
+
+// ── Pending email tokens ──────────────────────────────────────────────────────
+const _pendingVerify = new Map();
+
+// ── POST /api/auth/signup ─────────────────────────────────────────────────────
+app.post('/api/auth/signup', async (req, res) => {
+  const { fname, lname, email, password, role = 'customer', brandName = '', countryCode = 'NG' } = req.body || {};
+  if (!fname || !lname || !email || !password) return res.status(400).json({ error: 'Missing fields' });
+  if (password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
+  if (_findUser(email)) return res.status(409).json({ error: 'Email already registered' });
+  const salt = crypto.randomBytes(16).toString('hex');
+  const token = crypto.randomBytes(32).toString('hex');
+  const ref = (fname + lname).replace(/\s/g, '').toUpperCase().slice(0, 5) + Math.random().toString(36).slice(2, 5).toUpperCase();
+  const userData = {
+    id: 'u' + Date.now(), fname, lname, email,
+    passwordHash: _hashPass(password, salt), salt, role,
+    brandName: role === 'vendor' ? brandName : '',
+    countryCode, referralCode: ref, wallet: 0,
+    referralEarnings: 0, referralCount: 0, orders: [],
+    createdAt: new Date().toISOString().split('T')[0], verified: false,
+    ...(role === 'vendor' ? { storeSales: 0, storeRevenue: 0, commissionPaid: 0 } : {})
+  };
+  const protocol = (req.headers['x-forwarded-proto'] || req.protocol);
+  const verifyUrl = protocol + '://' + req.get('host') + '/verify-email?token=' + token;
+  if (process.env.GMAIL_APP_PASSWORD) {
+    _pendingVerify.set(token, { userData, expires: Date.now() + 24 * 3600 * 1000 });
+    try {
+      await _mailer.sendMail({
+        from: '"TrendMallz" <trendmallz.support@gmail.com>',
+        to: email,
+        subject: 'Verify your TrendMallz account',
+        html: '<div style="font-family:sans-serif;max-width:480px;margin:0 auto;background:#111;color:#f5f4f0;padding:32px;border-radius:16px">' +
+          '<h1 style="color:#FF6B00;margin:0 0 4px">TrendMallz</h1>' +
+          '<p style="color:#888;margin:0 0 28px;font-size:13px">Africa\'s premier fashion marketplace</p>' +
+          '<h2 style="font-size:20px;margin:0 0 12px">Hi ' + fname + ', verify your email</h2>' +
+          '<p style="color:#ccc;line-height:1.6;margin:0 0 28px">Click the button below to verify your email and activate your account.</p>' +
+          '<a href="' + verifyUrl + '" style="display:inline-block;background:#FF6B00;color:#111;font-weight:700;padding:14px 32px;border-radius:10px;text-decoration:none;font-size:15px">Verify My Email</a>' +
+          '<p style="color:#555;font-size:12px;margin:28px 0 0">Link expires in 24 hours. If you did not sign up, ignore this email.</p>' +
+          '</div>'
+      });
+      return res.json({ success: true, message: 'Verification email sent! Check your inbox.' });
+    } catch (err) {
+      console.error('Mail error:', err.message);
+      return res.status(500).json({ error: 'Could not send email. Please try again.' });
+    }
+  } else {
+    userData.verified = true;
+    const arr = _loadUsers();
+    arr.push(userData);
+    _saveUsers(arr);
+    req.session.user = _toSessionUser(userData);
+    return res.json({ success: true, autoVerified: true, user: req.session.user });
+  }
+});
+
+// ── GET /verify-email ─────────────────────────────────────────────────────────
+app.get('/verify-email', (req, res) => {
+  const { token } = req.query;
+  const pending = _pendingVerify.get(String(token || ''));
+  if (!pending || Date.now() > pending.expires) {
+    return res.send('<html><body style="font-family:sans-serif;background:#111;color:#f5f4f0;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0"><div style="text-align:center;padding:32px"><h2 style="color:#ef4444">Link expired or invalid</h2><p style="color:#aaa">Please sign up again.</p><a href="/" style="color:#FF6B00;font-weight:bold">Go to TrendMallz &rarr;</a></div></body></html>');
+  }
+  _pendingVerify.delete(token);
+  const arr = _loadUsers();
+  if (arr.find(u => u.email === pending.userData.email)) return res.redirect('/?verified=already');
+  pending.userData.verified = true;
+  arr.push(pending.userData);
+  _saveUsers(arr);
+  req.session.user = _toSessionUser(pending.userData);
+  res.redirect('/?verified=1');
+});
+
+// ── POST /api/auth/login ──────────────────────────────────────────────────────
+app.post('/api/auth/login', (req, res) => {
+  const { email, password } = req.body || {};
+  if (!email || !password) return res.status(400).json({ error: 'Missing fields' });
+  const user = _findUser(email);
+  if (!user) return res.status(401).json({ error: 'Invalid email or password' });
+  const isDemoPass = user.salt === 'demo' && (
+    (email === 'admin@trendmallz.com' && password === 'admin123') ||
+    (email !== 'admin@trendmallz.com' && password === 'demo123')
+  );
+  const isValidPass = user.salt !== 'demo' && _hashPass(password, user.salt) === user.passwordHash;
+  if (!isDemoPass && !isValidPass) return res.status(401).json({ error: 'Invalid email or password' });
+  if (!user.verified) return res.status(403).json({ error: 'Please verify your email first. Check your inbox.' });
+  req.session.user = _toSessionUser(user);
+  res.json({ success: true, user: req.session.user });
+});
+
+// ── GET /api/auth/me ──────────────────────────────────────────────────────────
+app.get('/api/auth/me', (req, res) => {
+  res.json({ user: req.session.user || null });
+});
+
+// ── POST /api/auth/logout ─────────────────────────────────────────────────────
+app.post('/api/auth/logout', (req, res) => {
+  req.session.destroy(() => {});
+  res.json({ success: true });
+});
+
 // ── Start ─────────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {

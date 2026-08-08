@@ -278,49 +278,38 @@ function quickLogin(email, pass, role) {
   doLogin();
 }
 function doLogin() {
-  const email = document.getElementById('login-email').value.trim();
-  const pass = document.getElementById('login-password').value;
-  const user = users.find(u => u.email===email && u.password===pass);
-  if(!user) { showToast('Invalid email or password','error'); return; }
-  loginUser(user);
+  var email = document.getElementById('login-email').value.trim();
+  var pass = document.getElementById('login-password').value;
+  if(!email||!pass){showToast('Please enter email and password','error');return;}
+  fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email,password:pass})})
+  .then(function(r){return r.json();})
+  .then(function(res){
+    if(res.error){showToast(res.error,'error');return;}
+    loginUser(res.user);
+  })
+  .catch(function(){showToast('Connection error. Please try again.','error');});
 }
 function doSignup() {
-  const fname = document.getElementById('signup-fname').value.trim();
-  const lname = document.getElementById('signup-lname').value.trim();
-  const email = document.getElementById('signup-email').value.trim();
-  const pass = document.getElementById('signup-password').value;
-  const countryCode = normalizeCountryCode(document.getElementById('signup-country')?.value);
-  const refCode = document.getElementById('signup-referral').value.trim().toUpperCase();
-  const terms = document.getElementById('signup-terms').checked;
-  if(!fname||!lname||!email||!pass) { showToast('Please fill all required fields','error'); return; }
-  if(pass.length < 6) { showToast('Password must be at least 6 characters','error'); return; }
-  if(!terms) { showToast('Please accept the terms','error'); return; }
-  if(users.find(u=>u.email===email)) { showToast('Email already registered','error'); return; }
-  
-  let referredBy = null;
-  if(refCode) {
-    const referrer = users.find(u => u.referralCode===refCode);
-    if(referrer) {
-      referredBy = referrer.id;
-      referrer.referralEarnings = (referrer.referralEarnings||0) + 2000;
-      referrer.referralCount = (referrer.referralCount||0) + 1;
-      referrer.wallet = (referrer.wallet||0) + 2000;
-      showToast(`Referral bonus applied! ${referrer.fname} earned ${fmt(2000, referrer)}`, 'info');
-    }
-  }
-  const brandName = state.signupType==='vendor' ? document.getElementById('signup-brand').value.trim() : '';
-  const newUser = {
-    id:'u'+Date.now(),email,password:pass,fname,lname,role:state.signupType,
-    countryCode,
-    referralCode:genRef(fname+lname),referredBy,referralEarnings:0,referralCount:0,
-    wallet:referredBy?500:0,createdAt:new Date().toISOString().split('T')[0],orders:[],
-    ...(state.signupType==='vendor' ? {brandName,storeSales:0,storeRevenue:0,commissionPaid:0} : {})
-  };
-  users.push(newUser);
-  saveUsers();
-  loginUser(newUser);
-  showToast(`Welcome to TrendMallz, ${fname}!`);
-  if(referredBy) showToast(`You received ${fmt(500, newUser)} welcome bonus!`,'info');
+  var fname = document.getElementById('signup-fname').value.trim();
+  var lname = document.getElementById('signup-lname').value.trim();
+  var email = document.getElementById('signup-email').value.trim();
+  var pass = document.getElementById('signup-password').value;
+  var countryCode = normalizeCountryCode(document.getElementById('signup-country') ? document.getElementById('signup-country').value : '');
+  var terms = document.getElementById('signup-terms').checked;
+  if(!fname||!lname||!email||!pass){showToast('Please fill all required fields','error');return;}
+  if(pass.length<6){showToast('Password must be at least 6 characters','error');return;}
+  if(!terms){showToast('Please accept the terms','error');return;}
+  var brandName = state.signupType==='vendor' ? (document.getElementById('signup-brand') ? document.getElementById('signup-brand').value.trim() : '') : '';
+  fetch('/api/auth/signup',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({fname:fname,lname:lname,email:email,password:pass,role:state.signupType,brandName:brandName,countryCode:countryCode})})
+  .then(function(r){return r.json();})
+  .then(function(res){
+    if(res.error){showToast(res.error,'error');return;}
+    if(res.autoVerified){loginUser(res.user);showToast('Welcome to TrendMallz, '+fname+'!');return;}
+    closeAuthModal();
+    showToast('Check your email to verify your account!','info');
+  })
+  .catch(function(){showToast('Connection error. Please try again.','error');});
 }
 function loginUser(user) {
   state.currentUser = user;
@@ -330,6 +319,7 @@ function loginUser(user) {
   lucide.createIcons();
 }
 function doLogout() {
+  fetch('/api/auth/logout',{method:'POST'}).catch(function(){});
   state.currentUser = null;
   state.cart = [];
   state.wishlist = [];
@@ -2830,6 +2820,21 @@ document.addEventListener('DOMContentLoaded', async () => {
   initCountUp();
   loadCategoryImages();
   lucide.createIcons();
+  // Restore server session on page load
+  fetch('/api/auth/me').then(function(r){return r.json();}).then(function(res){
+    if(res.user && !state.currentUser){ loginUser(res.user); }
+  }).catch(function(){});
+  // Handle email verification redirect
+  var _params = new URLSearchParams(window.location.search);
+  if(_params.get('verified')==='1'){
+    history.replaceState({},'','/');
+    fetch('/api/auth/me').then(function(r){return r.json();}).then(function(res){
+      if(res.user){loginUser(res.user);showToast('Email verified! Welcome to TrendMallz.');}
+    }).catch(function(){});
+  } else if(_params.get('verified')==='already'){
+    history.replaceState({},'','/');
+    showToast('Email already verified. Please log in.','info');
+  }
 });
 
 // ── Stats count-up animation ──────────────────────────────────────────────────
