@@ -258,6 +258,8 @@ function closeAuthModal() {
 function switchAuthTab(tab) {
   document.getElementById('auth-login').classList.toggle('hidden', tab!=='login');
   document.getElementById('auth-signup').classList.toggle('hidden', tab!=='signup');
+  document.getElementById('auth-code').classList.toggle('hidden', tab!=='code');
+  if(tab==='code') return;
   document.getElementById('auth-tab-login').classList.toggle('active', tab==='login');
   document.getElementById('auth-tab-signup').classList.toggle('active', tab==='signup');
   document.querySelectorAll('#auth-tab-login, #auth-tab-signup').forEach(b => b.classList.toggle('text-neutral-400', !b.classList.contains('active')));
@@ -285,7 +287,50 @@ function doLogin() {
   .then(function(r){return r.json();})
   .then(function(res){
     if(res.error){showToast(res.error,'error');return;}
+    if(res.needsCode){showAuthCode('login',res.email);return;}
     loginUser(res.user);
+  })
+  .catch(function(){showToast('Connection error. Please try again.','error');});
+}
+// ── Emailed 6-digit code step (signup, and login from a new device) ──────────
+function showAuthCode(purpose, email) {
+  state.authCode = {purpose:purpose, email:email};
+  document.getElementById('auth-code-title').textContent = purpose==='signup' ? 'Verify your email' : 'New device sign-in';
+  document.getElementById('auth-code-intro').textContent = purpose==='signup' ? 'To finish creating your account, enter the 6-digit code we sent to' : "We don't recognise this device. Enter the 6-digit code we sent to";
+  document.getElementById('auth-code-email').textContent = email;
+  document.getElementById('auth-code-input').value = '';
+  switchAuthTab('code');
+  document.getElementById('auth-code-input').focus();
+}
+function submitAuthCode() {
+  var ac = state.authCode;
+  var code = document.getElementById('auth-code-input').value.replace(/\D/g,'');
+  if(!ac) return;
+  if(code.length!==6){showToast('Enter the 6-digit code from your email','error');return;}
+  var btn = document.getElementById('auth-code-submit');
+  btn.disabled = true; btn.textContent = 'Verifying...';
+  fetch('/api/auth/verify-'+ac.purpose,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:ac.email,code:code})})
+  .then(function(r){return r.json();})
+  .then(function(res){
+    btn.disabled = false; btn.textContent = 'Verify';
+    if(res.error){showToast(res.error,'error');return;}
+    state.authCode = null;
+    loginUser(res.user);
+    if(ac.purpose==='signup') showToast('Email verified! Welcome to TrendMallz, '+res.user.fname+'!');
+  })
+  .catch(function(){
+    btn.disabled = false; btn.textContent = 'Verify';
+    showToast('Connection error. Please try again.','error');
+  });
+}
+function resendAuthCode() {
+  var ac = state.authCode;
+  if(!ac) return;
+  fetch('/api/auth/resend-code',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:ac.email,purpose:ac.purpose})})
+  .then(function(r){return r.json();})
+  .then(function(res){
+    if(res.error){showToast(res.error,'error');return;}
+    showToast('New code sent to '+ac.email,'info');
   })
   .catch(function(){showToast('Connection error. Please try again.','error');});
 }
@@ -309,8 +354,7 @@ function doSignup() {
     if(_sbtn){_sbtn.disabled=false;_sbtn.textContent='Create Account';}
     if(res.error){showToast(res.error,'error');return;}
     if(res.autoVerified){loginUser(res.user);showToast('Welcome to TrendMallz, '+fname+'!');return;}
-    closeAuthModal();
-    showToast('Check your email to verify your account!','info');
+    if(res.needsCode) showAuthCode('signup',res.email);
   })
   .catch(function(){
     if(_sbtn){_sbtn.disabled=false;_sbtn.textContent='Create Account';}
@@ -808,6 +852,7 @@ function proceedToCheckout() {
 // =================== CHECKOUT ===================
 function renderCheckout() {
   const el = document.getElementById('checkout-content');
+  state.coupon = null;
   if(state.cart.length===0) { el.innerHTML = '<div class="text-center py-20 text-neutral-500">Your cart is empty. <button onclick="showPage(\'shop\')" class="text-citrine hover:underline">Shop now</button></div>'; return; }
   const subtotal = cartTotal();
   const delivery = subtotal >= 30000 ? 0 : 2500;
@@ -875,7 +920,7 @@ function renderCheckout() {
         <button onclick="placeOrder()" class="w-full py-4 font-bold rounded-xl uppercase tracking-wider btn-fire text-white pulse-orange relative overflow-hidden" style="background:linear-gradient(135deg,#FF6B00,#e05e00)">
           <span class="relative z-10 flex items-center justify-center gap-2">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
-            Pay Now · ${fmt(total)}
+            <span id="pay-now-label">Pay Now · ${fmt(total)}</span>
           </span>
         </button>
         <div class="mt-3 paystack-badge flex items-center justify-center gap-2 text-xs text-neutral-400">
@@ -888,89 +933,120 @@ function renderCheckout() {
   lucide.createIcons();
 }
 
+function checkoutTotals() {
+  const subtotal = cartTotal();
+  const c = state.coupon;
+  const discount = c && c.discount ? Math.round(subtotal * c.discount) : 0;
+  const delivery = (c && c.freeShip) || subtotal >= 30000 ? 0 : 2500;
+  return { subtotal, discount, delivery, total: subtotal - discount + delivery, commission: Math.round(subtotal * 0.1) };
+}
+
 function applyCoupon() {
   const code = document.getElementById('coupon-input').value.trim().toUpperCase();
   const coupons = { 'WELCOME10': { discount: 0.1, label: '10% off' }, 'FREESHIP': { discount: 0, freeShip: true, label: 'Free delivery' }, 'SAVE20': { discount: 0.2, label: '20% off' } };
   if(coupons[code]) {
+    state.coupon = { code, ...coupons[code] };
     showToast(`Coupon applied: ${coupons[code].label}!`);
+    const t = checkoutTotals();
     document.getElementById('discount-row').classList.remove('hidden');
-    const subtotal = cartTotal();
-    const disc = coupons[code].discount ? Math.round(subtotal*coupons[code].discount) : 0;
-    document.getElementById('discount-amount').textContent = `-${fmt(disc)}`;
-    document.getElementById('checkout-total').textContent = fmt(subtotal - disc + (coupons[code].freeShip ? 0 : (subtotal>=30000?0:2500)));
+    document.getElementById('discount-amount').textContent = `-${fmt(t.discount)}`;
+    document.getElementById('checkout-total').textContent = fmt(t.total);
+    const payLabel = document.getElementById('pay-now-label');
+    if (payLabel) payLabel.textContent = 'Pay Now · ' + fmt(t.total);
   } else {
     showToast('Invalid coupon code', 'error');
   }
 }
 
-function placeOrder() {
+async function placeOrder() {
   if(!state.currentUser) { openAuthModal('login'); return; }
+  if(state.cart.length === 0) return;
+  if(typeof PaystackPop === 'undefined') { showToast('Payment service failed to load. Check your connection and refresh.', 'error'); return; }
 
-  const subtotal = cartTotal();
-  const delivery = subtotal >= 30000 ? 0 : 2500;
-  const total = subtotal + delivery;
-  const commission = Math.round(subtotal * 0.1);
-  const email = state.currentUser.email;
-  const fname = state.currentUser.fname;
-  const lname = state.currentUser.lname;
+  let publicKey = '';
+  try {
+    const cfg = await (await fetch('/api/paystack/config')).json();
+    publicKey = cfg.publicKey;
+  } catch(_) {}
+  if(!publicKey) { showToast('Payments are not configured yet. Please try again later.', 'error'); return; }
 
-  // ===== REAL PAYSTACK PAYMENT =====
-  // Replace 'pk_test_XXXXXXXX' with your actual Paystack public key
-  const PAYSTACK_PUBLIC_KEY = 'pk_test_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx';
+  // Snapshot the order so later cart changes can't alter what was paid for
+  const totals = checkoutTotals();
+  const items = state.cart.map(i => ({ ...i }));
+  const { email, fname, lname } = state.currentUser;
 
   const handler = PaystackPop.setup({
-    key: PAYSTACK_PUBLIC_KEY,
+    key: publicKey,
     email: email,
-    amount: total * 100, // Paystack uses kobo (smallest currency unit)
+    amount: Math.round(totals.total * 100), // Paystack uses kobo (smallest currency unit)
     currency: 'NGN',
-    ref: 'TM-' + Math.random().toString(36).substr(2, 9).toUpperCase(),
+    ref: 'TM-' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2, 6).toUpperCase(),
     metadata: {
       custom_fields: [
-        { display_name: 'Customer Name', variable_name: 'customer_name', value: `${fname} ${lname}` },
-        { display_name: 'Cart Items', variable_name: 'items', value: state.cart.length + ' item(s)' }
+        { display_name: 'Customer Name', variable_name: 'customer_name', value: fname + ' ' + lname },
+        { display_name: 'Cart Items', variable_name: 'items', value: items.length + ' item(s)' }
       ]
     },
     onClose: function() {
       showToast('Payment window closed. Your order was not placed.', 'info');
     },
+    // PaystackPop v1 rejects async callbacks, so verification runs via a promise
     callback: function(response) {
-      // Payment successful — create order
-      const trackingId = response.reference || 'TM-' + Math.random().toString(36).substr(2, 6).toUpperCase();
-      const newOrder = {
-        id: 'o' + Date.now(),
-        userId: state.currentUser.id,
-        items: state.cart.map(i => ({ ...i })),
-        subtotal, commission, delivery, total,
-        status: 'Processing',
-        date: new Date().toISOString().split('T')[0],
-        trackingId,
-        paystackRef: response.reference,
-        paymentStatus: 'paid'
-      };
-      orders.push(newOrder);
-      saveOrders();
-      // Update user orders
-      const user = users.find(u => u.id === state.currentUser.id);
-      if (user) { user.orders = user.orders || []; user.orders.push(newOrder.id); saveUsers(); }
-      // Credit admin commission
-      const admin = users.find(u => u.role === 'admin');
-      if (admin) { admin.totalCommission = (admin.totalCommission || 0) + commission; admin.totalOrders = (admin.totalOrders || 0) + 1; admin.totalRevenue = (admin.totalRevenue || 0) + subtotal; saveUsers(); }
-      // Credit vendor revenue
-      state.cart.forEach(item => {
-        const prod = PRODUCTS.find(p => p.id === item.productId);
-        if (prod) {
-          const vendor = users.find(u => u.brandName === prod.brand);
-          if (vendor) { vendor.storeRevenue = (vendor.storeRevenue || 0) + (item.price * item.qty); vendor.storeSales = (vendor.storeSales || 0) + item.qty; saveUsers(); }
-        }
-      });
-      state.cart = [];
-      updateCartBadge();
-      showToast('🎉 Payment confirmed! Order ' + trackingId + ' placed!');
-      showOrderSuccessModal(newOrder);
+      showToast('Confirming payment…', 'info');
+      fetch('/api/paystack/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reference: response.reference, amount: totals.total })
+      })
+        .then(r => r.json().then(data => ({ ok: r.ok, data })))
+        .then(({ ok, data }) => {
+          if (!ok || !data.success) throw new Error(data.error || 'Verification failed');
+          finalizeOrder(response.reference, items, totals);
+        })
+        .catch(err => {
+          showToast('We could not confirm your payment (' + err.message + '). If you were charged, contact support with ref ' + response.reference, 'error');
+        });
     }
   });
 
   handler.openIframe();
+}
+
+function finalizeOrder(reference, items, totals) {
+  const { subtotal, commission, delivery, discount, total } = totals;
+  const newOrder = {
+    id: 'o' + Date.now(),
+    userId: state.currentUser.id,
+    items,
+    subtotal, commission, delivery, discount, total,
+    coupon: state.coupon ? state.coupon.code : null,
+    status: 'Processing',
+    date: new Date().toISOString().split('T')[0],
+    trackingId: reference,
+    paystackRef: reference,
+    paymentStatus: 'paid'
+  };
+  orders.push(newOrder);
+  saveOrders();
+  // Update user orders
+  const user = users.find(u => u.id === state.currentUser.id);
+  if (user) { user.orders = user.orders || []; user.orders.push(newOrder.id); saveUsers(); }
+  // Credit admin commission
+  const admin = users.find(u => u.role === 'admin');
+  if (admin) { admin.totalCommission = (admin.totalCommission || 0) + commission; admin.totalOrders = (admin.totalOrders || 0) + 1; admin.totalRevenue = (admin.totalRevenue || 0) + subtotal; saveUsers(); }
+  // Credit vendor revenue
+  items.forEach(item => {
+    const prod = PRODUCTS.find(p => p.id === item.productId);
+    if (prod) {
+      const vendor = users.find(u => u.brandName === prod.brand);
+      if (vendor) { vendor.storeRevenue = (vendor.storeRevenue || 0) + (item.price * item.qty); vendor.storeSales = (vendor.storeSales || 0) + item.qty; saveUsers(); }
+    }
+  });
+  state.cart = [];
+  state.coupon = null;
+  updateCartBadge();
+  showToast('🎉 Payment confirmed! Order ' + reference + ' placed!');
+  showOrderSuccessModal(newOrder);
 }
 
 function showOrderSuccessModal(order) {
@@ -2830,17 +2906,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   fetch('/api/auth/me').then(function(r){return r.json();}).then(function(res){
     if(res.user && !state.currentUser){ loginUser(res.user); }
   }).catch(function(){});
-  // Handle email verification redirect
-  var _params = new URLSearchParams(window.location.search);
-  if(_params.get('verified')==='1'){
-    history.replaceState({},'','/');
-    fetch('/api/auth/me').then(function(r){return r.json();}).then(function(res){
-      if(res.user){loginUser(res.user);showToast('Email verified! Welcome to TrendMallz.');}
-    }).catch(function(){});
-  } else if(_params.get('verified')==='already'){
-    history.replaceState({},'','/');
-    showToast('Email already verified. Please log in.','info');
-  }
 });
 
 // ── Stats count-up animation ──────────────────────────────────────────────────

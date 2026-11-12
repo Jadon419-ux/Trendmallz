@@ -118,6 +118,23 @@ tailwind.config={theme:{extend:{colors:{obsidian:{DEFAULT:'#0A0A0A',50:'#1a1a1a'
         <button onclick="doSignup()" class="w-full py-3.5 bg-citrine text-obsidian font-bold rounded-xl hover:bg-citrine-dark transition-colors text-sm uppercase tracking-wider">Create Account</button>
       </div>
     </div>
+    <!-- Email Code Form -->
+    <div id="auth-code" class="p-6 sm:p-8 overflow-y-auto hidden">
+      <h2 id="auth-code-title" class="font-display text-2xl font-bold mb-1">Check your email</h2>
+      <p class="text-neutral-500 text-sm mb-6"><span id="auth-code-intro">We sent a 6-digit code to</span> <span id="auth-code-email" class="text-white font-medium"></span></p>
+      <div class="space-y-4">
+        <div>
+          <label class="block text-xs font-medium text-neutral-400 mb-1.5">Verification Code</label>
+          <input id="auth-code-input" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000" onkeydown="if(event.key==='Enter')submitAuthCode()" class="w-full px-4 py-3 bg-obsidian border border-charcoal-border rounded-xl text-2xl text-center font-mono tracking-[0.5em] focus:border-citrine transition-colors">
+        </div>
+        <button id="auth-code-submit" onclick="submitAuthCode()" class="w-full py-3.5 bg-citrine text-obsidian font-bold rounded-xl hover:bg-citrine-dark transition-colors text-sm uppercase tracking-wider">Verify</button>
+        <div class="flex justify-between text-sm">
+          <button onclick="resendAuthCode()" class="text-citrine hover:underline">Resend code</button>
+          <button onclick="switchAuthTab(state.authCode && state.authCode.purpose==='signup' ? 'signup' : 'login')" class="text-neutral-400 hover:text-white">Back</button>
+        </div>
+        <p class="text-xs text-neutral-600">The code expires in 10 minutes. Check your spam folder if you don't see it.</p>
+      </div>
+    </div>
   </div>
 </div>
 

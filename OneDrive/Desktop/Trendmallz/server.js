@@ -36,7 +36,10 @@ const SNAP_SCOPE = process.env.SNAP_SCOPE ||
   'https://auth.snapchat.com/oauth2/api/user.display_name ' +
   'https://auth.snapchat.com/oauth2/api/user.bitmoji.avatar';
 
-const SNAP_AUTH_URL  = 'https://accounts.snapchat.com/accounts/oauth2/auth';
+const PAYSTACK_PUBLIC_KEY = process.env.PAYSTACK_PUBLIC_KEY || '';
+const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY || '';
+
+const SNAP_AUTH_URL  ='https://accounts.snapchat.com/accounts/oauth2/auth';
 const SNAP_TOKEN_URL = 'https://accounts.snapchat.com/accounts/oauth2/token';
 const SNAP_ME_URL    = 'https://api.snapkit.com/v1/me';
 
@@ -503,7 +506,7 @@ async function _sendEmail(to, subject, html) {
   const r = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from: 'TrendMallz <onboarding@resend.dev>', to, subject, html })
+    body: JSON.stringify({ from: process.env.RESEND_FROM || 'TrendMallz <onboarding@resend.dev>', to, subject, html })
   });
   const data = await r.json();
   if (!r.ok) throw new Error(data.message || 'Resend error');
@@ -543,8 +546,91 @@ function _toSessionUser(u) {
   };
 }
 
-// ── Pending email tokens ──────────────────────────────────────────────────────
-const _pendingVerify = new Map();
+// ── Email verification codes ──────────────────────────────────────────────────
+// One pending code per email+purpose; held in memory, so a restart cancels it
+const _CODE_TTL_MS    = 10 * 60 * 1000;
+const _CODE_MAX_TRIES = 5;
+const _CODE_RESEND_MS = 60 * 1000;
+const _pendingCodes = new Map();
+
+function _codeKey(email, purpose) { return purpose + ':' + String(email).toLowerCase(); }
+function _hashCode(code) { return crypto.createHash('sha256').update(String(code)).digest('hex'); }
+
+async function _issueCode(email, purpose, fname, data) {
+  const code = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
+  _pendingCodes.set(_codeKey(email, purpose), {
+    codeHash: _hashCode(code), expires: Date.now() + _CODE_TTL_MS,
+    sentAt: Date.now(), tries: 0, fname, data,
+  });
+  const heading = purpose === 'signup' ? 'confirm your email' : 'here is your sign-in code';
+  const intro = purpose === 'signup'
+    ? 'Enter this code on TrendMallz to finish creating your account.'
+    : 'Someone (hopefully you) is signing in to TrendMallz from a new device. Enter this code to continue.';
+  await _sendEmail(
+    email,
+    code + ' is your TrendMallz code',
+    '<div style="font-family:sans-serif;max-width:480px;margin:0 auto;background:#111;color:#f5f4f0;padding:32px;border-radius:16px">' +
+    '<h1 style="color:#FF6B00;margin:0 0 4px">TrendMallz</h1>' +
+    '<p style="color:#888;margin:0 0 28px;font-size:13px">Africa\'s premier fashion marketplace</p>' +
+    '<h2 style="font-size:20px;margin:0 0 12px">Hi ' + fname + ', ' + heading + '</h2>' +
+    '<p style="color:#ccc;line-height:1.6;margin:0 0 24px">' + intro + '</p>' +
+    '<div style="font-size:34px;font-weight:700;letter-spacing:10px;color:#FF6B00;background:#1c1c1c;padding:16px 24px;border-radius:10px;text-align:center">' + code + '</div>' +
+    '<p style="color:#555;font-size:12px;margin:28px 0 0">This code expires in 10 minutes. If you didn\'t request it, you can ignore this email.</p>' +
+    '</div>'
+  );
+}
+
+// Returns the pending entry on success, or { error, status } on failure
+function _checkCode(email, purpose, code) {
+  const key = _codeKey(email, purpose);
+  const p = _pendingCodes.get(key);
+  if (!p || Date.now() > p.expires) {
+    _pendingCodes.delete(key);
+    return { error: 'Code expired. Please request a new one.', status: 410 };
+  }
+  const given = Buffer.from(_hashCode(String(code || '').trim()), 'hex');
+  if (!crypto.timingSafeEqual(given, Buffer.from(p.codeHash, 'hex'))) {
+    p.tries += 1;
+    if (p.tries >= _CODE_MAX_TRIES) {
+      _pendingCodes.delete(key);
+      return { error: 'Too many wrong attempts. Please request a new code.', status: 429 };
+    }
+    return { error: 'Incorrect code. ' + (_CODE_MAX_TRIES - p.tries) + ' attempt(s) left.', status: 400 };
+  }
+  _pendingCodes.delete(key);
+  return p;
+}
+
+// ── Trusted devices ───────────────────────────────────────────────────────────
+// A signed cookie marks a browser that has passed a code for a given user
+const _DEVICE_COOKIE = 'tm_device';
+const _DEVICE_TTL_MS = 30 * 24 * 3600 * 1000;
+const _DEVICE_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
+
+function _signDevice(payload) {
+  return crypto.createHmac('sha256', _DEVICE_SECRET).update(payload).digest('base64url');
+}
+function _readCookie(req, name) {
+  const m = (req.headers.cookie || '').split(';').map(s => s.trim()).find(s => s.startsWith(name + '='));
+  return m ? decodeURIComponent(m.slice(name.length + 1)) : '';
+}
+function _isTrustedDevice(req, userId) {
+  const [payload, sig] = _readCookie(req, _DEVICE_COOKIE).split('.');
+  if (!payload || !sig) return false;
+  const expected = _signDevice(payload);
+  if (sig.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return false;
+  try {
+    const { u, exp } = JSON.parse(Buffer.from(payload, 'base64url').toString());
+    return u === userId && Date.now() < exp;
+  } catch (_x) { return false; }
+}
+function _trustDevice(res, userId) {
+  const payload = Buffer.from(JSON.stringify({ u: userId, exp: Date.now() + _DEVICE_TTL_MS })).toString('base64url');
+  res.cookie(_DEVICE_COOKIE, payload + '.' + _signDevice(payload), {
+    httpOnly: true, sameSite: 'lax', maxAge: _DEVICE_TTL_MS,
+    secure: process.env.NODE_ENV === 'production',
+  });
+}
 
 // ── POST /api/auth/signup ─────────────────────────────────────────────────────
 app.post('/api/auth/signup', async (req, res) => {
@@ -553,7 +639,6 @@ app.post('/api/auth/signup', async (req, res) => {
   if (password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
   if (_findUser(email)) return res.status(409).json({ error: 'Email already registered' });
   const salt = crypto.randomBytes(16).toString('hex');
-  const token = crypto.randomBytes(32).toString('hex');
   const ref = (fname + lname).replace(/\s/g, '').toUpperCase().slice(0, 5) + Math.random().toString(36).slice(2, 5).toUpperCase();
   const userData = {
     id: 'u' + Date.now(), fname, lname, email,
@@ -564,29 +649,8 @@ app.post('/api/auth/signup', async (req, res) => {
     createdAt: new Date().toISOString().split('T')[0], verified: false,
     ...(role === 'vendor' ? { storeSales: 0, storeRevenue: 0, commissionPaid: 0 } : {})
   };
-  const protocol = (req.headers['x-forwarded-proto'] || req.protocol);
-  const verifyUrl = protocol + '://' + req.get('host') + '/verify-email?token=' + token;
-  if (process.env.RESEND_API_KEY) {
-    _pendingVerify.set(token, { userData, expires: Date.now() + 24 * 3600 * 1000 });
-    try {
-      await _sendEmail(
-        email,
-        'Verify your TrendMallz account',
-        '<div style="font-family:sans-serif;max-width:480px;margin:0 auto;background:#111;color:#f5f4f0;padding:32px;border-radius:16px">' +
-        '<h1 style="color:#FF6B00;margin:0 0 4px">TrendMallz</h1>' +
-        '<p style="color:#888;margin:0 0 28px;font-size:13px">Africa\'s premier fashion marketplace</p>' +
-        '<h2 style="font-size:20px;margin:0 0 12px">Hi ' + fname + ', verify your email</h2>' +
-        '<p style="color:#ccc;line-height:1.6;margin:0 0 28px">Click the button below to verify your email and activate your account.</p>' +
-        '<a href="' + verifyUrl + '" style="display:inline-block;background:#FF6B00;color:#111;font-weight:700;padding:14px 32px;border-radius:10px;text-decoration:none;font-size:15px">Verify My Email</a>' +
-        '<p style="color:#555;font-size:12px;margin:28px 0 0">Link expires in 24 hours. If you did not sign up, ignore this email.</p>' +
-        '</div>'
-      );
-      return res.json({ success: true, message: 'Verification email sent! Check your inbox.' });
-    } catch (err) {
-      console.error('Mail error:', err.message);
-      return res.status(500).json({ error: 'Email delivery failed: ' + err.message });
-    }
-  } else {
+  if (!process.env.RESEND_API_KEY) {
+    // No email provider configured (local dev): create the account straight away
     userData.verified = true;
     const arr = _loadUsers();
     arr.push(userData);
@@ -594,27 +658,33 @@ app.post('/api/auth/signup', async (req, res) => {
     req.session.user = _toSessionUser(userData);
     return res.json({ success: true, autoVerified: true, user: req.session.user });
   }
+  try {
+    await _issueCode(email, 'signup', fname, userData);
+    res.json({ success: true, needsCode: true, email });
+  } catch (err) {
+    console.error('Mail error:', err.message);
+    res.status(500).json({ error: 'Email delivery failed: ' + err.message });
+  }
 });
 
-// ── GET /verify-email ─────────────────────────────────────────────────────────
-app.get('/verify-email', (req, res) => {
-  const { token } = req.query;
-  const pending = _pendingVerify.get(String(token || ''));
-  if (!pending || Date.now() > pending.expires) {
-    return res.send('<html><body style="font-family:sans-serif;background:#111;color:#f5f4f0;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0"><div style="text-align:center;padding:32px"><h2 style="color:#ef4444">Link expired or invalid</h2><p style="color:#aaa">Please sign up again.</p><a href="/" style="color:#FF6B00;font-weight:bold">Go to TrendMallz &rarr;</a></div></body></html>');
-  }
-  _pendingVerify.delete(token);
+// ── POST /api/auth/verify-signup ──────────────────────────────────────────────
+app.post('/api/auth/verify-signup', (req, res) => {
+  const { email, code } = req.body || {};
+  if (!email || !code) return res.status(400).json({ error: 'Missing email or code' });
+  const result = _checkCode(email, 'signup', code);
+  if (result.error) return res.status(result.status).json({ error: result.error });
+  if (_findUser(email)) return res.status(409).json({ error: 'Email already registered. Please sign in.' });
+  const userData = { ...result.data, verified: true };
   const arr = _loadUsers();
-  if (arr.find(u => u.email === pending.userData.email)) return res.redirect('/?verified=already');
-  pending.userData.verified = true;
-  arr.push(pending.userData);
+  arr.push(userData);
   _saveUsers(arr);
-  req.session.user = _toSessionUser(pending.userData);
-  res.redirect('/?verified=1');
+  req.session.user = _toSessionUser(userData);
+  _trustDevice(res, userData.id);
+  res.json({ success: true, user: req.session.user });
 });
 
 // ── POST /api/auth/login ──────────────────────────────────────────────────────
-app.post('/api/auth/login', (req, res) => {
+app.post('/api/auth/login', async (req, res) => {
   const { email, password } = req.body || {};
   if (!email || !password) return res.status(400).json({ error: 'Missing fields' });
   const user = _findUser(email);
@@ -625,9 +695,49 @@ app.post('/api/auth/login', (req, res) => {
   );
   const isValidPass = user.salt !== 'demo' && _hashPass(password, user.salt) === user.passwordHash;
   if (!isDemoPass && !isValidPass) return res.status(401).json({ error: 'Invalid email or password' });
-  if (!user.verified) return res.status(403).json({ error: 'Please verify your email first. Check your inbox.' });
+  if (!user.verified) return res.status(403).json({ error: 'Please verify your email first.' });
+  // Demo accounts can't receive email; real accounts on a new device must enter a code
+  if (!isDemoPass && process.env.RESEND_API_KEY && !_isTrustedDevice(req, user.id)) {
+    try {
+      await _issueCode(email, 'login', user.fname, { userId: user.id });
+      return res.json({ success: true, needsCode: true, email });
+    } catch (err) {
+      console.error('Mail error:', err.message);
+      return res.status(500).json({ error: 'Could not send sign-in code: ' + err.message });
+    }
+  }
   req.session.user = _toSessionUser(user);
   res.json({ success: true, user: req.session.user });
+});
+
+// ── POST /api/auth/verify-login ───────────────────────────────────────────────
+app.post('/api/auth/verify-login', (req, res) => {
+  const { email, code } = req.body || {};
+  if (!email || !code) return res.status(400).json({ error: 'Missing email or code' });
+  const result = _checkCode(email, 'login', code);
+  if (result.error) return res.status(result.status).json({ error: result.error });
+  const user = _findUser(email);
+  if (!user || user.id !== result.data.userId) return res.status(401).json({ error: 'Account not found' });
+  req.session.user = _toSessionUser(user);
+  _trustDevice(res, user.id);
+  res.json({ success: true, user: req.session.user });
+});
+
+// ── POST /api/auth/resend-code ────────────────────────────────────────────────
+app.post('/api/auth/resend-code', async (req, res) => {
+  const { email, purpose } = req.body || {};
+  if (!email || !['signup', 'login'].includes(purpose)) return res.status(400).json({ error: 'Invalid request' });
+  const p = _pendingCodes.get(_codeKey(email, purpose));
+  if (!p) return res.status(410).json({ error: 'Session expired. Please start again.' });
+  const wait = Math.ceil((p.sentAt + _CODE_RESEND_MS - Date.now()) / 1000);
+  if (wait > 0) return res.status(429).json({ error: 'Please wait ' + wait + 's before requesting another code.' });
+  try {
+    await _issueCode(email, purpose, p.fname, p.data);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Mail error:', err.message);
+    res.status(500).json({ error: 'Email delivery failed: ' + err.message });
+  }
 });
 
 // ── GET /api/auth/me ──────────────────────────────────────────────────────────
@@ -641,12 +751,54 @@ app.post('/api/auth/logout', (req, res) => {
   res.json({ success: true });
 });
 
+// ── GET /api/paystack/config ──────────────────────────────────────────────────
+app.get('/api/paystack/config', (_req, res) => {
+  res.json({ publicKey: PAYSTACK_PUBLIC_KEY });
+});
+
+// ── POST /api/paystack/verify ─────────────────────────────────────────────────
+// Confirms a transaction with Paystack before the client records the order
+const _usedPaystackRefs = new Set();
+app.post('/api/paystack/verify', async (req, res) => {
+  const { reference, amount } = req.body || {};
+  if (!PAYSTACK_SECRET_KEY) return res.status(503).json({ error: 'Paystack is not configured' });
+  if (!reference) return res.status(400).json({ error: 'Missing reference' });
+  if (_usedPaystackRefs.has(reference)) return res.status(409).json({ error: 'Payment reference already used' });
+  try {
+    const r = await fetch('https://api.paystack.co/transaction/verify/' + encodeURIComponent(reference), {
+      headers: { Authorization: 'Bearer ' + PAYSTACK_SECRET_KEY },
+    });
+    const data = await r.json();
+    if (!r.ok || !data.status) return res.status(502).json({ error: data.message || 'Paystack verification failed' });
+    const tx = data.data;
+    if (tx.status !== 'success') return res.status(402).json({ error: 'Payment not successful (' + tx.status + ')' });
+    // requested_amount excludes fees added when "pass charges to customer" is on
+    const paidFor = tx.requested_amount ?? tx.amount;
+    if (amount != null && paidFor !== Math.round(Number(amount) * 100)) {
+      return res.status(400).json({ error: 'Amount paid does not match order total' });
+    }
+    _usedPaystackRefs.add(reference);
+    res.json({
+      success:  true,
+      reference: tx.reference,
+      amount:   tx.amount / 100,
+      currency: tx.currency,
+      channel:  tx.channel,
+      paidAt:   tx.paid_at,
+    });
+  } catch (err) {
+    console.error('Paystack verify error:', err.message);
+    res.status(502).json({ error: 'Could not reach Paystack' });
+  }
+});
+
 // ── Start ─────────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`\n  TrendMallz  →  http://localhost:${PORT}`);
   console.log(`  Replicate  : ${REPLICATE_AVAILABLE ? 'ready' : 'not configured (set REPLICATE_API_TOKEN)'}`);
-  console.log(`  Snap Kit   : ${SNAP_CLIENT_ID ? 'configured' : 'not configured'}\n`);
+  console.log(`  Snap Kit   : ${SNAP_CLIENT_ID ? 'configured' : 'not configured'}`);
+  console.log(`  Paystack   : ${PAYSTACK_PUBLIC_KEY && PAYSTACK_SECRET_KEY ? 'configured' : 'not configured (set PAYSTACK_PUBLIC_KEY / PAYSTACK_SECRET_KEY)'}\n`);
 });
 
 module.exports = app;
