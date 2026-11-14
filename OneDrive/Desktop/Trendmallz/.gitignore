@@ -9,3 +9,4 @@ venv/
 .claude/
 users.json
 
+.data/

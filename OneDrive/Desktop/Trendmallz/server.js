@@ -8,22 +8,35 @@ const session  = require('express-session');
 const crypto   = require('crypto');
 const fs       = require('fs');
 const path     = require('path');
+const db       = require('./db');
 
 const app = express();
 
 // ── Middleware ────────────────────────────────────────────────────────────────
 app.use(cors());
-app.use(express.json({ limit: '50mb' }));
+app.use(express.json({
+  limit: '50mb',
+  // Paystack webhooks are signed over the exact raw body
+  verify: (req, _res, buf) => { if (req.originalUrl.startsWith('/api/paystack/webhook')) req.rawBody = buf; },
+}));
+const _SESSION_TTL_MS = 7 * 24 * 3600 * 1000;
 app.use(session({
+  store:             new db.PgSessionStore(_SESSION_TTL_MS),
   secret:            process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex'),
   resave:            false,
   saveUninitialized: false,
+  rolling:           true,
   cookie: {
     secure:   process.env.NODE_ENV === 'production',
     sameSite: 'lax',
-    maxAge:   15 * 60 * 1000, // 15 minutes (enough for OAuth flow)
+    maxAge:   _SESSION_TTL_MS,
   },
 }));
+
+// Lets async route handlers pass errors to the error handler
+function _async(fn) {
+  return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+}
 
 // ── Config ────────────────────────────────────────────────────────────────────
 const REPLICATE_API_TOKEN = process.env.REPLICATE_API_TOKEN || '';
@@ -127,9 +140,9 @@ app.get('/api/brands', (_req, res) => {
 });
 
 // ── /api/products ─────────────────────────────────────────────────────────────
-app.get('/api/products', (_req, res) => {
+function _buildCatalog() {
   const productsDir = path.join(__dirname, 'products');
-  if (!fs.existsSync(productsDir)) return res.json([]);
+  if (!fs.existsSync(productsDir)) return [];
   const exts = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif']);
   // Group images by product base name, stripping view suffixes
   // e.g. calvary_front + calvary_back → one product with images array
@@ -215,8 +228,10 @@ app.get('/api/products', (_req, res) => {
     }
   } catch (_) {}
   items.sort((a, b) => a.brand.localeCompare(b.brand) || a.name.localeCompare(b.name));
-  res.json(items);
-});
+  return items;
+}
+
+app.get('/api/products', (_req, res) => res.json(_buildCatalog()));
 
 // ── /api/category-images/:category ───────────────────────────────────────────
 app.get('/api/category-images/:category', (req, res) => {
@@ -424,7 +439,7 @@ app.get('/api/snap-me', (req, res) => {
 
 // ── /api/add-product ─────────────────────────────────────────────────────────
 // images[] is now an array of permanent Cloudinary URLs — no disk writes needed
-app.post('/api/add-product', (req, res) => {
+app.post('/api/add-product', _requireUser(['vendor', 'admin']), (req, res) => {
   const {
     brandName, category, name: productName,
     price = 0, compare = 0, discount = 0, description = '',
@@ -435,6 +450,10 @@ app.post('/api/add-product', (req, res) => {
   if (!brandName || !category || !productName || !images.length) {
     return res.status(400).json({ error: 'Missing required fields' });
   }
+  if (req.user.role === 'vendor' && String(brandName).toLowerCase() !== (req.user.brand_name || '').toLowerCase()) {
+    return res.status(403).json({ error: 'You can only add products for your own brand' });
+  }
+  if (!(Number(price) > 0)) return res.status(400).json({ error: 'Please enter a price' });
   const validImages = images.filter(u => typeof u === 'string' && u.startsWith('https://'));
   if (!validImages.length) return res.status(400).json({ error: 'No valid image URLs' });
 
@@ -467,9 +486,14 @@ app.post('/api/add-product', (req, res) => {
 });
 
 // ── /api/update-price ────────────────────────────────────────────────────────
-app.post('/api/update-price', (req, res) => {
+app.post('/api/update-price', _requireUser(['vendor', 'admin']), (req, res) => {
   const { productId, brandName, productBase, price = 0, compare = 0 } = req.body || {};
   if (!productId || !brandName) return res.status(400).json({ error: 'Missing fields' });
+  const isAdmin = req.user.role === 'admin';
+  if (!isAdmin && String(brandName).toLowerCase() !== (req.user.brand_name || '').toLowerCase()) {
+    return res.status(403).json({ error: 'You can only change prices for your own brand' });
+  }
+  if (!(Number(price) > 0)) return res.status(400).json({ error: 'Please enter a price' });
   const p = Number(price) || 0;
   const c = Number(compare) || p;
   const disc = c > p ? Math.round((1 - p / c) * 100) : 0;
@@ -479,7 +503,7 @@ app.post('/api/update-price', (req, res) => {
   let updatedCustom = false;
   try {
     let custom = JSON.parse(fs.readFileSync(customFile, 'utf8'));
-    const idx = custom.findIndex(cp => cp.id === productId);
+    const idx = custom.findIndex(cp => cp.id === productId && (isAdmin || String(cp.brand).toLowerCase() === String(brandName).toLowerCase()));
     if (idx !== -1) {
       custom[idx].price = p; custom[idx].compare = c; custom[idx].discount = disc;
       fs.writeFileSync(customFile, JSON.stringify(custom, null, 2));
@@ -487,7 +511,8 @@ app.post('/api/update-price', (req, res) => {
     }
   } catch (_x) {}
 
-  // Fall back to prices.json in the brand folder
+  // Fall back to prices.json in the brand folder (folder brands are managed by admins)
+  if (!updatedCustom && !isAdmin) return res.status(404).json({ error: 'Product not found in your store' });
   if (!updatedCustom && productBase) {
     const priceFile = path.join(__dirname, 'products', brandName, 'prices.json');
     let prices = {};
@@ -513,38 +538,74 @@ async function _sendEmail(to, subject, html) {
   return data;
 }
 
-// ── User store ────────────────────────────────────────────────────────────────
-const _usersFile = path.join(__dirname, 'users.json');
+// ── Users ─────────────────────────────────────────────────────────────────────
+// Admins are whoever is listed in ADMIN_EMAILS; nobody can sign up as one.
+// Demo accounts only exist when DEMO_ACCOUNTS=on, which should never be set live.
+const _ADMIN_EMAILS = (process.env.ADMIN_EMAILS || '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
+const _DEMO_ENABLED = process.env.DEMO_ACCOUNTS === 'on';
 const _DEMO_USERS = [
-  { id:'u1', email:'customer@demo.com', passwordHash:'demo', salt:'demo', fname:'Emeka', lname:'Johnson', role:'customer', countryCode:'NG', referralCode:'REF-EJ2024', wallet:6500, referralEarnings:4000, referralCount:2, orders:['o1','o2'], createdAt:'2024-01-15', verified:true },
-  { id:'u2', email:'vendor@demo.com', passwordHash:'demo', salt:'demo', fname:'Adaeze', lname:'Obi', role:'vendor', countryCode:'NG', brandName:'NOX Apparel', referralCode:'REF-AO2024', wallet:185000, referralEarnings:0, referralCount:0, orders:[], storeSales:12, storeRevenue:285000, commissionPaid:28500, createdAt:'2023-11-01', verified:true },
-  { id:'u3', email:'admin@trendmallz.com', passwordHash:'demo', salt:'demo', fname:'Admin', lname:'TrendMallz', role:'admin', countryCode:'NG', referralCode:'REF-ADMIN', wallet:0, orders:[], totalCommission:85000, totalOrders:142, totalRevenue:950000, createdAt:'2023-01-01', verified:true }
+  { id: 'u1', email: 'customer@demo.com',    fname: 'Emeka',  lname: 'Johnson',    role: 'customer', brand_name: '',            referral_code: 'REF-EJ2024', password: 'demo123' },
+  { id: 'u2', email: 'vendor@demo.com',      fname: 'Adaeze', lname: 'Obi',        role: 'vendor',   brand_name: 'NOX Apparel', referral_code: 'REF-AO2024', password: 'demo123' },
+  { id: 'u3', email: 'admin@trendmallz.com', fname: 'Admin',  lname: 'TrendMallz', role: 'admin',    brand_name: '',            referral_code: 'REF-ADMIN',  password: 'admin123' },
 ];
-function _loadUsers() {
-  try { return JSON.parse(fs.readFileSync(_usersFile, 'utf8')); } catch (_x) { return []; }
-}
-function _saveUsers(arr) {
-  try { fs.writeFileSync(_usersFile, JSON.stringify(arr, null, 2)); } catch (_x) {}
-}
-function _findUser(email) {
-  const demo = _DEMO_USERS.find(u => u.email === email);
-  if (demo) return demo;
-  return _loadUsers().find(u => u.email === email) || null;
-}
+
+function _normEmail(email) { return String(email || '').trim().toLowerCase(); }
 function _hashPass(pass, salt) {
   return crypto.scryptSync(pass, salt, 64).toString('hex');
+}
+function _safeEqual(a, b) {
+  const x = Buffer.from(String(a)), y = Buffer.from(String(b));
+  return x.length === y.length && crypto.timingSafeEqual(x, y);
+}
+function _roleOf(u) {
+  if (_ADMIN_EMAILS.includes(u.email)) return 'admin';
+  if (u.role === 'admin' && u.salt === 'demo' && _DEMO_ENABLED) return 'admin';
+  return u.role === 'vendor' ? 'vendor' : 'customer';
+}
+function _findUserByEmail(email) { return db.one('SELECT * FROM users WHERE email = $1', [_normEmail(email)]); }
+function _findUserById(id) { return db.one('SELECT * FROM users WHERE id = $1', [id]); }
+function _insertUser(u) {
+  return db.query(
+    'INSERT INTO users (id, email, password_hash, salt, fname, lname, role, brand_name, country_code, referral_code) ' +
+    'VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)',
+    [u.id, u.email, u.password_hash, u.salt, u.fname, u.lname, u.role, u.brand_name, u.country_code, u.referral_code]
+  );
+}
+async function _seedDemoUsers() {
+  for (const d of _DEMO_USERS) {
+    await db.query(
+      'INSERT INTO users (id, email, password_hash, salt, fname, lname, role, brand_name, country_code, referral_code) ' +
+      "VALUES ($1, $2, 'demo', 'demo', $3, $4, $5, $6, 'NG', $7) ON CONFLICT (id) DO NOTHING",
+      [d.id, d.email, d.fname, d.lname, d.role, d.brand_name, d.referral_code]
+    );
+  }
 }
 function _toSessionUser(u) {
   return {
     id: u.id, fname: u.fname, lname: u.lname, email: u.email,
-    role: u.role, brandName: u.brandName || '', wallet: u.wallet || 0,
-    countryCode: u.countryCode || 'NG', referralCode: u.referralCode || '',
-    referralEarnings: u.referralEarnings || 0, referralCount: u.referralCount || 0,
-    orders: u.orders || [],
-    ...(u.role === 'vendor' ? { storeSales: u.storeSales || 0, storeRevenue: u.storeRevenue || 0, commissionPaid: u.commissionPaid || 0 } : {}),
-    ...(u.role === 'admin' ? { totalCommission: u.totalCommission || 0, totalOrders: u.totalOrders || 0, totalRevenue: u.totalRevenue || 0 } : {})
+    role: _roleOf(u), brandName: u.brand_name || '', wallet: u.wallet || 0,
+    countryCode: u.country_code || 'NG', referralCode: u.referral_code || '',
+    referralEarnings: u.referral_earnings || 0, referralCount: u.referral_count || 0,
+    orders: [],
   };
 }
+// Reloads the signed-in user from the database so roles are always current
+async function _currentUser(req) {
+  const id = req.session.user && req.session.user.id;
+  if (!id) return null;
+  const u = await _findUserById(id);
+  return u ? { ...u, role: _roleOf(u) } : null;
+}
+function _requireUser(roles) {
+  return _async(async (req, res, next) => {
+    const u = await _currentUser(req);
+    if (!u) return res.status(401).json({ error: 'Please sign in first' });
+    if (roles && !roles.includes(u.role)) return res.status(403).json({ error: 'You are not allowed to do that' });
+    req.user = u;
+    next();
+  });
+}
+function _signIn(req, u) { req.session.user = _toSessionUser(u); return req.session.user; }
 
 // ── Email verification codes ──────────────────────────────────────────────────
 // One pending code per email+purpose; held in memory, so a restart cancels it
@@ -553,7 +614,7 @@ const _CODE_MAX_TRIES = 5;
 const _CODE_RESEND_MS = 60 * 1000;
 const _pendingCodes = new Map();
 
-function _codeKey(email, purpose) { return purpose + ':' + String(email).toLowerCase(); }
+function _codeKey(email, purpose) { return purpose + ':' + _normEmail(email); }
 function _hashCode(code) { return crypto.createHash('sha256').update(String(code)).digest('hex'); }
 
 async function _issueCode(email, purpose, fname, data) {
@@ -616,9 +677,7 @@ function _readCookie(req, name) {
 }
 function _isTrustedDevice(req, userId) {
   const [payload, sig] = _readCookie(req, _DEVICE_COOKIE).split('.');
-  if (!payload || !sig) return false;
-  const expected = _signDevice(payload);
-  if (sig.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return false;
+  if (!payload || !sig || !_safeEqual(sig, _signDevice(payload))) return false;
   try {
     const { u, exp } = JSON.parse(Buffer.from(payload, 'base64url').toString());
     return u === userId && Date.now() < exp;
@@ -632,72 +691,74 @@ function _trustDevice(res, userId) {
   });
 }
 
+// ── GET /api/config ───────────────────────────────────────────────────────────
+app.get('/api/config', (_req, res) => {
+  res.json({ demoAccounts: _DEMO_ENABLED });
+});
+
 // ── POST /api/auth/signup ─────────────────────────────────────────────────────
-app.post('/api/auth/signup', async (req, res) => {
-  const { fname, lname, email, password, role = 'customer', brandName = '', countryCode = 'NG' } = req.body || {};
+app.post('/api/auth/signup', _async(async (req, res) => {
+  const { fname, lname, password, countryCode = 'NG' } = req.body || {};
+  const email = _normEmail(req.body && req.body.email);
+  const role = req.body && req.body.role === 'vendor' ? 'vendor' : 'customer';
+  const brandName = role === 'vendor' ? String((req.body && req.body.brandName) || '').trim() : '';
   if (!fname || !lname || !email || !password) return res.status(400).json({ error: 'Missing fields' });
   if (password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
-  if (_findUser(email)) return res.status(409).json({ error: 'Email already registered' });
+  if (await _findUserByEmail(email)) return res.status(409).json({ error: 'Email already registered' });
+  if (role === 'vendor') {
+    if (!brandName) return res.status(400).json({ error: 'Please enter your brand name' });
+    const taken = _buildCatalog().some(p => p.brand.toLowerCase() === brandName.toLowerCase()) ||
+      await db.one('SELECT 1 FROM users WHERE lower(brand_name) = lower($1)', [brandName]);
+    if (taken) return res.status(409).json({ error: 'That brand name is already registered on TrendMallz' });
+  }
   const salt = crypto.randomBytes(16).toString('hex');
-  const ref = (fname + lname).replace(/\s/g, '').toUpperCase().slice(0, 5) + Math.random().toString(36).slice(2, 5).toUpperCase();
   const userData = {
-    id: 'u' + Date.now(), fname, lname, email,
-    passwordHash: _hashPass(password, salt), salt, role,
-    brandName: role === 'vendor' ? brandName : '',
-    countryCode, referralCode: ref, wallet: 0,
-    referralEarnings: 0, referralCount: 0, orders: [],
-    createdAt: new Date().toISOString().split('T')[0], verified: false,
-    ...(role === 'vendor' ? { storeSales: 0, storeRevenue: 0, commissionPaid: 0 } : {})
+    id: 'u' + Date.now() + crypto.randomBytes(2).toString('hex'), email,
+    password_hash: _hashPass(password, salt), salt,
+    fname: String(fname).trim(), lname: String(lname).trim(), role, brand_name: brandName,
+    country_code: String(countryCode || 'NG').slice(0, 2),
+    referral_code: (fname + lname).replace(/\s/g, '').toUpperCase().slice(0, 5) + crypto.randomBytes(2).toString('hex').toUpperCase(),
   };
   if (!process.env.RESEND_API_KEY) {
     // No email provider configured (local dev): create the account straight away
-    userData.verified = true;
-    const arr = _loadUsers();
-    arr.push(userData);
-    _saveUsers(arr);
-    req.session.user = _toSessionUser(userData);
-    return res.json({ success: true, autoVerified: true, user: req.session.user });
+    await _insertUser(userData);
+    return res.json({ success: true, autoVerified: true, user: _signIn(req, userData) });
   }
   try {
-    await _issueCode(email, 'signup', fname, userData);
+    await _issueCode(email, 'signup', userData.fname, userData);
     res.json({ success: true, needsCode: true, email });
   } catch (err) {
     console.error('Mail error:', err.message);
     res.status(500).json({ error: 'Email delivery failed: ' + err.message });
   }
-});
+}));
 
 // ── POST /api/auth/verify-signup ──────────────────────────────────────────────
-app.post('/api/auth/verify-signup', (req, res) => {
+app.post('/api/auth/verify-signup', _async(async (req, res) => {
   const { email, code } = req.body || {};
   if (!email || !code) return res.status(400).json({ error: 'Missing email or code' });
   const result = _checkCode(email, 'signup', code);
   if (result.error) return res.status(result.status).json({ error: result.error });
-  if (_findUser(email)) return res.status(409).json({ error: 'Email already registered. Please sign in.' });
-  const userData = { ...result.data, verified: true };
-  const arr = _loadUsers();
-  arr.push(userData);
-  _saveUsers(arr);
-  req.session.user = _toSessionUser(userData);
-  _trustDevice(res, userData.id);
-  res.json({ success: true, user: req.session.user });
-});
+  if (await _findUserByEmail(email)) return res.status(409).json({ error: 'Email already registered. Please sign in.' });
+  await _insertUser(result.data);
+  _trustDevice(res, result.data.id);
+  res.json({ success: true, user: _signIn(req, result.data) });
+}));
 
 // ── POST /api/auth/login ──────────────────────────────────────────────────────
-app.post('/api/auth/login', async (req, res) => {
-  const { email, password } = req.body || {};
+app.post('/api/auth/login', _async(async (req, res) => {
+  const { password } = req.body || {};
+  const email = _normEmail(req.body && req.body.email);
   if (!email || !password) return res.status(400).json({ error: 'Missing fields' });
-  const user = _findUser(email);
+  const user = await _findUserByEmail(email);
   if (!user) return res.status(401).json({ error: 'Invalid email or password' });
-  const isDemoPass = user.salt === 'demo' && (
-    (email === 'admin@trendmallz.com' && password === 'admin123') ||
-    (email !== 'admin@trendmallz.com' && password === 'demo123')
-  );
-  const isValidPass = user.salt !== 'demo' && _hashPass(password, user.salt) === user.passwordHash;
-  if (!isDemoPass && !isValidPass) return res.status(401).json({ error: 'Invalid email or password' });
-  if (!user.verified) return res.status(403).json({ error: 'Please verify your email first.' });
+  const isDemo = user.salt === 'demo';
+  if (isDemo && !_DEMO_ENABLED) return res.status(401).json({ error: 'Invalid email or password' });
+  const demoPass = user.role === 'admin' ? 'admin123' : 'demo123';
+  const ok = isDemo ? password === demoPass : _safeEqual(_hashPass(password, user.salt), user.password_hash);
+  if (!ok) return res.status(401).json({ error: 'Invalid email or password' });
   // Demo accounts can't receive email; real accounts on a new device must enter a code
-  if (!isDemoPass && process.env.RESEND_API_KEY && !_isTrustedDevice(req, user.id)) {
+  if (!isDemo && process.env.RESEND_API_KEY && !_isTrustedDevice(req, user.id)) {
     try {
       await _issueCode(email, 'login', user.fname, { userId: user.id });
       return res.json({ success: true, needsCode: true, email });
@@ -706,22 +767,20 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(500).json({ error: 'Could not send sign-in code: ' + err.message });
     }
   }
-  req.session.user = _toSessionUser(user);
-  res.json({ success: true, user: req.session.user });
-});
+  res.json({ success: true, user: _signIn(req, user) });
+}));
 
 // ── POST /api/auth/verify-login ───────────────────────────────────────────────
-app.post('/api/auth/verify-login', (req, res) => {
+app.post('/api/auth/verify-login', _async(async (req, res) => {
   const { email, code } = req.body || {};
   if (!email || !code) return res.status(400).json({ error: 'Missing email or code' });
   const result = _checkCode(email, 'login', code);
   if (result.error) return res.status(result.status).json({ error: result.error });
-  const user = _findUser(email);
+  const user = await _findUserByEmail(email);
   if (!user || user.id !== result.data.userId) return res.status(401).json({ error: 'Account not found' });
-  req.session.user = _toSessionUser(user);
   _trustDevice(res, user.id);
-  res.json({ success: true, user: req.session.user });
-});
+  res.json({ success: true, user: _signIn(req, user) });
+}));
 
 // ── POST /api/auth/resend-code ────────────────────────────────────────────────
 app.post('/api/auth/resend-code', async (req, res) => {
@@ -741,9 +800,11 @@ app.post('/api/auth/resend-code', async (req, res) => {
 });
 
 // ── GET /api/auth/me ──────────────────────────────────────────────────────────
-app.get('/api/auth/me', (req, res) => {
-  res.json({ user: req.session.user || null });
-});
+app.get('/api/auth/me', _async(async (req, res) => {
+  const u = await _currentUser(req);
+  if (!u) { delete req.session.user; return res.json({ user: null }); }
+  res.json({ user: _signIn(req, u) });
+}));
 
 // ── POST /api/auth/logout ─────────────────────────────────────────────────────
 app.post('/api/auth/logout', (req, res) => {
@@ -751,54 +812,243 @@ app.post('/api/auth/logout', (req, res) => {
   res.json({ success: true });
 });
 
+// ── Pricing ───────────────────────────────────────────────────────────────────
+// The server prices every order from the catalog; the browser only says what it wants
+const _DELIVERY_FEE       = 2500;
+const _FREE_DELIVERY_FROM = 30000;
+const _COMMISSION_RATE    = 0.1;
+const _COUPONS = {
+  WELCOME10: { discount: 0.1, label: '10% off' },
+  FREESHIP:  { freeShip: true, label: 'Free delivery' },
+};
+const _ORDER_STATUSES = ['Processing', 'In Transit', 'Delivered', 'Cancelled'];
+
+function _priceOrder(rawItems, couponCode) {
+  if (!Array.isArray(rawItems) || !rawItems.length) return { error: 'Your cart is empty' };
+  if (rawItems.length > 50) return { error: 'Too many items in one order' };
+  const catalog = new Map(_buildCatalog().map(p => [p.id, p]));
+  const items = [];
+  for (const it of rawItems) {
+    const p = catalog.get(Number(it && it.productId));
+    if (!p || !(p.price > 0)) {
+      return { error: 'An item in your cart is no longer available. Please remove it and try again.' };
+    }
+    const qty = Math.floor(Number(it.qty));
+    if (!(qty >= 1 && qty <= 20)) return { error: 'Invalid quantity for ' + p.name };
+    items.push({
+      productId: p.id, name: p.name, brand: p.brand, img: p.img, price: p.price, qty,
+      size: String(it.size || '').slice(0, 20), color: String(it.color || '').slice(0, 30),
+    });
+  }
+  const code = String(couponCode || '').trim().toUpperCase();
+  const coupon = code ? _COUPONS[code] : null;
+  if (code && !coupon) return { error: 'Invalid coupon code' };
+  const subtotal = items.reduce((s, i) => s + i.price * i.qty, 0);
+  const discount = coupon && coupon.discount ? Math.round(subtotal * coupon.discount) : 0;
+  const delivery = (coupon && coupon.freeShip) || subtotal >= _FREE_DELIVERY_FROM ? 0 : _DELIVERY_FEE;
+  return {
+    items, subtotal, discount, delivery,
+    total: subtotal - discount + delivery,
+    commission: Math.round(subtotal * _COMMISSION_RATE),
+    coupon: coupon ? { code, label: coupon.label } : null,
+  };
+}
+
+const _SHIPPING_FIELDS = {
+  fname: 'first name', lname: 'last name', phone: 'phone', address: 'delivery address', city: 'city', state: 'state',
+};
+function _cleanShipping(s) {
+  s = s || {};
+  const out = {};
+  for (const k of ['fname', 'lname', 'email', 'phone', 'address', 'city', 'state']) out[k] = String(s[k] || '').trim().slice(0, 200);
+  const missing = Object.keys(_SHIPPING_FIELDS).filter(k => !out[k]);
+  if (missing.length) return { error: 'Please enter your ' + missing.map(k => _SHIPPING_FIELDS[k]).join(', ') };
+  return { shipping: out };
+}
+
+// ── Orders ────────────────────────────────────────────────────────────────────
+function _orderOut(o) {
+  return {
+    id: o.id, userId: o.user_id, reference: o.reference, trackingId: o.reference,
+    date: new Date(o.created_at).toISOString().split('T')[0],
+    status: o.status, paymentStatus: o.payment_status,
+    items: o.items, subtotal: o.subtotal, discount: o.discount, delivery: o.delivery,
+    total: o.total, commission: o.commission, coupon: o.coupon, shipping: o.shipping,
+    customerName: o.shipping.fname + ' ' + o.shipping.lname,
+  };
+}
+
+// ── POST /api/orders/quote ────────────────────────────────────────────────────
+app.post('/api/orders/quote', (req, res) => {
+  const { items, coupon } = req.body || {};
+  const priced = _priceOrder(items, coupon);
+  if (priced.error) return res.status(400).json({ error: priced.error });
+  res.json(priced);
+});
+
+// ── POST /api/orders ──────────────────────────────────────────────────────────
+// Creates an order awaiting payment; Paystack is then opened for its reference
+app.post('/api/orders', _requireUser(), _async(async (req, res) => {
+  if (!PAYSTACK_PUBLIC_KEY || !PAYSTACK_SECRET_KEY) return res.status(503).json({ error: 'Payments are not configured yet' });
+  const { items, coupon, shipping } = req.body || {};
+  const priced = _priceOrder(items, coupon);
+  if (priced.error) return res.status(400).json({ error: priced.error });
+  const ship = _cleanShipping(shipping);
+  if (ship.error) return res.status(400).json({ error: ship.error });
+  const reference = 'TM-' + Date.now().toString(36).toUpperCase() + crypto.randomBytes(3).toString('hex').toUpperCase();
+  const row = await db.one(
+    'INSERT INTO orders (id, reference, user_id, items, subtotal, discount, delivery, total, commission, coupon, shipping) ' +
+    'VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *',
+    ['o' + Date.now() + crypto.randomBytes(2).toString('hex'), reference, req.user.id, JSON.stringify(priced.items),
+     priced.subtotal, priced.discount, priced.delivery, priced.total, priced.commission,
+     priced.coupon ? priced.coupon.code : null, JSON.stringify(ship.shipping)]
+  );
+  res.json({
+    order: _orderOut(row), reference, amount: priced.total * 100,
+    email: req.user.email, publicKey: PAYSTACK_PUBLIC_KEY,
+  });
+}));
+
+// Checks a reference with Paystack and marks the matching order paid.
+// Used by both the browser callback and the webhook; safe to call repeatedly.
+async function _confirmPayment(reference) {
+  const order = await db.one('SELECT * FROM orders WHERE reference = $1', [reference]);
+  if (!order) return { status: 404, error: 'Order not found' };
+  if (order.payment_status === 'paid') return { order };
+  const r = await fetch('https://api.paystack.co/transaction/verify/' + encodeURIComponent(reference), {
+    headers: { Authorization: 'Bearer ' + PAYSTACK_SECRET_KEY },
+  });
+  const data = await r.json();
+  if (!r.ok || !data.status) return { status: 502, error: data.message || 'Paystack verification failed' };
+  const tx = data.data;
+  if (tx.status !== 'success') return { status: 402, error: 'Payment not successful (' + tx.status + ')' };
+  // requested_amount excludes fees added when "pass charges to customer" is on
+  const paidFor = tx.requested_amount ?? tx.amount;
+  if (tx.currency !== 'NGN' || paidFor !== order.total * 100) {
+    console.error('Paystack amount mismatch for ' + reference + ': paid ' + paidFor + ' ' + tx.currency + ', expected ' + order.total * 100);
+    await db.query("UPDATE orders SET payment_status = 'amount_mismatch' WHERE id = $1 AND payment_status = 'pending'", [order.id]);
+    return { status: 400, error: 'Amount paid does not match the order total. Please contact support with reference ' + reference };
+  }
+  const updated = await db.one(
+    "UPDATE orders SET payment_status = 'paid', status = 'Processing', paid_amount = $2, paid_at = now() " +
+    "WHERE id = $1 AND payment_status <> 'paid' RETURNING *",
+    [order.id, tx.amount]
+  );
+  return { order: updated || await db.one('SELECT * FROM orders WHERE id = $1', [order.id]) };
+}
+
 // ── GET /api/paystack/config ──────────────────────────────────────────────────
 app.get('/api/paystack/config', (_req, res) => {
   res.json({ publicKey: PAYSTACK_PUBLIC_KEY });
 });
 
 // ── POST /api/paystack/verify ─────────────────────────────────────────────────
-// Confirms a transaction with Paystack before the client records the order
-const _usedPaystackRefs = new Set();
-app.post('/api/paystack/verify', async (req, res) => {
-  const { reference, amount } = req.body || {};
+app.post('/api/paystack/verify', _requireUser(), _async(async (req, res) => {
+  const { reference } = req.body || {};
   if (!PAYSTACK_SECRET_KEY) return res.status(503).json({ error: 'Paystack is not configured' });
   if (!reference) return res.status(400).json({ error: 'Missing reference' });
-  if (_usedPaystackRefs.has(reference)) return res.status(409).json({ error: 'Payment reference already used' });
-  try {
-    const r = await fetch('https://api.paystack.co/transaction/verify/' + encodeURIComponent(reference), {
-      headers: { Authorization: 'Bearer ' + PAYSTACK_SECRET_KEY },
-    });
-    const data = await r.json();
-    if (!r.ok || !data.status) return res.status(502).json({ error: data.message || 'Paystack verification failed' });
-    const tx = data.data;
-    if (tx.status !== 'success') return res.status(402).json({ error: 'Payment not successful (' + tx.status + ')' });
-    // requested_amount excludes fees added when "pass charges to customer" is on
-    const paidFor = tx.requested_amount ?? tx.amount;
-    if (amount != null && paidFor !== Math.round(Number(amount) * 100)) {
-      return res.status(400).json({ error: 'Amount paid does not match order total' });
-    }
-    _usedPaystackRefs.add(reference);
-    res.json({
-      success:  true,
-      reference: tx.reference,
-      amount:   tx.amount / 100,
-      currency: tx.currency,
-      channel:  tx.channel,
-      paidAt:   tx.paid_at,
-    });
-  } catch (err) {
-    console.error('Paystack verify error:', err.message);
-    res.status(502).json({ error: 'Could not reach Paystack' });
+  const owner = await db.one('SELECT user_id FROM orders WHERE reference = $1', [reference]);
+  if (!owner || owner.user_id !== req.user.id) return res.status(404).json({ error: 'Order not found' });
+  const result = await _confirmPayment(reference);
+  if (result.error) return res.status(result.status).json({ error: result.error });
+  res.json({ success: true, order: _orderOut(result.order) });
+}));
+
+// ── POST /api/paystack/webhook ────────────────────────────────────────────────
+// Paystack calls this when a charge succeeds, so orders are marked paid even if
+// the customer closes the tab first. Set the URL in Paystack → Settings → API Keys.
+app.post('/api/paystack/webhook', (req, res) => {
+  const sig = req.get('x-paystack-signature') || '';
+  const expected = PAYSTACK_SECRET_KEY && req.rawBody
+    ? crypto.createHmac('sha512', PAYSTACK_SECRET_KEY).update(req.rawBody).digest('hex') : '';
+  if (!expected || !_safeEqual(sig, expected)) return res.sendStatus(401);
+  res.sendStatus(200);
+  const event = req.body || {};
+  if (event.event === 'charge.success' && event.data && event.data.reference) {
+    _confirmPayment(event.data.reference)
+      .then(r => { if (r.error && r.status !== 404) console.error('Webhook confirm ' + event.data.reference + ':', r.error); })
+      .catch(err => console.error('Webhook error:', err.message));
   }
+});
+
+// ── GET /api/orders ───────────────────────────────────────────────────────────
+// Customers see their own paid orders, vendors the paid orders containing their
+// products (only their items), and admins every paid order.
+app.get('/api/orders', _requireUser(), _async(async (req, res) => {
+  const u = req.user;
+  if (u.role === 'admin') {
+    const rows = await db.query("SELECT * FROM orders WHERE payment_status = 'paid' ORDER BY created_at");
+    return res.json({ orders: rows.map(_orderOut) });
+  }
+  if (u.role === 'vendor') {
+    const brand = (u.brand_name || '').toLowerCase();
+    const rows = await db.query("SELECT * FROM orders WHERE payment_status = 'paid' ORDER BY created_at");
+    const orders = rows.map(_orderOut).map(o => {
+      const items = o.items.filter(i => String(i.brand).toLowerCase() === brand);
+      const subtotal = items.reduce((s, i) => s + i.price * i.qty, 0);
+      return { ...o, items, subtotal, commission: Math.round(subtotal * _COMMISSION_RATE) };
+    }).filter(o => o.items.length);
+    return res.json({ orders });
+  }
+  const rows = await db.query("SELECT * FROM orders WHERE user_id = $1 AND payment_status = 'paid' ORDER BY created_at", [u.id]);
+  res.json({ orders: rows.map(_orderOut) });
+}));
+
+// ── PATCH /api/orders/:id/status ──────────────────────────────────────────────
+app.patch('/api/orders/:id/status', _requireUser(['admin']), _async(async (req, res) => {
+  const { status } = req.body || {};
+  if (!_ORDER_STATUSES.includes(status)) return res.status(400).json({ error: 'Invalid status' });
+  const row = await db.one(
+    "UPDATE orders SET status = $2 WHERE id = $1 AND payment_status = 'paid' RETURNING *", [req.params.id, status]
+  );
+  if (!row) return res.status(404).json({ error: 'Order not found' });
+  res.json({ success: true, order: _orderOut(row) });
+}));
+
+// ── GET /api/admin/users ──────────────────────────────────────────────────────
+app.get('/api/admin/users', _requireUser(['admin']), _async(async (_req, res) => {
+  const [users, paid] = await Promise.all([
+    db.query('SELECT * FROM users ORDER BY created_at'),
+    db.query("SELECT id, user_id, items FROM orders WHERE payment_status = 'paid'"),
+  ]);
+  res.json({
+    users: users.map(u => {
+      const brand = (u.brand_name || '').toLowerCase();
+      const storeRevenue = brand ? paid.reduce((s, o) => s + o.items
+        .filter(i => String(i.brand).toLowerCase() === brand)
+        .reduce((t, i) => t + i.price * i.qty, 0), 0) : 0;
+      return {
+        id: u.id, email: u.email, fname: u.fname, lname: u.lname, role: _roleOf(u),
+        brandName: u.brand_name, countryCode: u.country_code, wallet: u.wallet,
+        referralCount: u.referral_count, createdAt: new Date(u.created_at).toISOString().split('T')[0],
+        orders: paid.filter(o => o.user_id === u.id).map(o => o.id), storeRevenue,
+      };
+    }),
+  });
+}));
+
+// ── Errors ────────────────────────────────────────────────────────────────────
+app.use((err, _req, res, _next) => {
+  console.error('Server error:', err);
+  res.status(500).json({ error: 'Something went wrong. Please try again.' });
 });
 
 // ── Start ─────────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+db.init().then(async dbKind => {
+  if (_DEMO_ENABLED) await _seedDemoUsers();
+  app.listen(PORT, () => {
   console.log(`\n  TrendMallz  →  http://localhost:${PORT}`);
+  console.log(`  Database   : ${dbKind}`);
+  console.log(`  Admins     : ${_ADMIN_EMAILS.length ? _ADMIN_EMAILS.length + ' (ADMIN_EMAILS)' : 'none (set ADMIN_EMAILS)'}`);
+  console.log(`  Demo users : ${_DEMO_ENABLED ? 'ON (DEMO_ACCOUNTS=on) — never enable in production' : 'off'}`);
   console.log(`  Replicate  : ${REPLICATE_AVAILABLE ? 'ready' : 'not configured (set REPLICATE_API_TOKEN)'}`);
   console.log(`  Snap Kit   : ${SNAP_CLIENT_ID ? 'configured' : 'not configured'}`);
   console.log(`  Paystack   : ${PAYSTACK_PUBLIC_KEY && PAYSTACK_SECRET_KEY ? 'configured' : 'not configured (set PAYSTACK_PUBLIC_KEY / PAYSTACK_SECRET_KEY)'}\n`);
+  });
+}).catch(err => {
+  console.error('Database setup failed:', err.message);
+  process.exit(1);
 });
 
 module.exports = app;

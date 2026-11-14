@@ -33,12 +33,12 @@ tailwind.config={theme:{extend:{colors:{obsidian:{DEFAULT:'#0A0A0A',50:'#1a1a1a'
       <div class="space-y-4">
         <div>
           <label class="block text-xs font-medium text-neutral-400 mb-1.5">Email Address</label>
-          <input id="login-email" type="email" placeholder="you@example.com" class="w-full px-4 py-3 bg-obsidian border border-charcoal-border rounded-xl text-sm focus:border-citrine transition-colors" value="customer@demo.com">
+          <input id="login-email" type="email" placeholder="you@example.com" class="w-full px-4 py-3 bg-obsidian border border-charcoal-border rounded-xl text-sm focus:border-citrine transition-colors">
         </div>
         <div>
           <label class="block text-xs font-medium text-neutral-400 mb-1.5">Password</label>
           <div class="relative">
-            <input id="login-password" type="password" placeholder="••••••••" class="w-full px-4 py-3 bg-obsidian border border-charcoal-border rounded-xl text-sm focus:border-citrine transition-colors pr-12" value="demo123">
+            <input id="login-password" type="password" placeholder="••••••••" class="w-full px-4 py-3 bg-obsidian border border-charcoal-border rounded-xl text-sm focus:border-citrine transition-colors pr-12">
             <button onclick="togglePw('login-password')" class="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-white"><i data-lucide="eye" class="w-4 h-4"></i></button>
           </div>
         </div>
@@ -48,7 +48,7 @@ tailwind.config={theme:{extend:{colors:{obsidian:{DEFAULT:'#0A0A0A',50:'#1a1a1a'
         </div>
         <button onclick="doLogin()" class="w-full py-3.5 bg-citrine text-obsidian font-bold rounded-xl hover:bg-citrine-dark transition-colors text-sm uppercase tracking-wider">Sign In</button>
       </div>
-      <div class="mt-6 p-4 bg-obsidian rounded-xl border border-charcoal-border">
+      <div id="demo-accounts" class="hidden mt-6 p-4 bg-obsidian rounded-xl border border-charcoal-border">
         <p class="text-xs text-neutral-500 mb-2 font-semibold uppercase tracking-wider">Demo Accounts</p>
         <div class="space-y-1.5">
           <button onclick="quickLogin('customer@demo.com','demo123','customer')" class="w-full text-left px-3 py-2 rounded-lg hover:bg-charcoal text-xs text-neutral-400 transition-colors flex justify-between items-center group">

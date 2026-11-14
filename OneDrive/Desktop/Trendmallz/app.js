@@ -30,14 +30,10 @@ if (!users.length) {
   ];
   localStorage.setItem('tm_users', JSON.stringify(users));
 }
-let orders = JSON.parse(localStorage.getItem('tm_orders') || '[]');
-if (!orders.length) {
-  orders = [
-    {id:'o1',userId:'u1',items:[{productId:1,name:'Obsidian Oversized Hoodie',price:18500,qty:1,size:'L',img:'https://picsum.photos/seed/hoodie1/600/800'},{productId:3,name:'Ankara Reimagined Blazer',price:35000,qty:1,size:'M',img:'https://picsum.photos/seed/blazer1/600/800'}],subtotal:53500,commission:5350,total:53500,status:'Delivered',date:'2024-11-10',trackingId:'TM-001-2024'},
-    {id:'o2',userId:'u1',items:[{productId:8,name:'Graphic Print Tee',price:9500,qty:2,size:'XL',img:'https://picsum.photos/seed/tee1/600/800'}],subtotal:19000,commission:1900,total:19000,status:'In Transit',date:'2024-12-02',trackingId:'TM-002-2024'},
-  ];
-  localStorage.setItem('tm_orders', JSON.stringify(orders));
-}
+// Orders (and, for admins, the user list) are loaded from the server by loadOrders()
+let orders = [];
+let adminUsers = [];
+const NG_STATES = ['Abia','Abuja (FCT)','Adamawa','Akwa Ibom','Anambra','Bauchi','Bayelsa','Benue','Borno','Cross River','Delta','Ebonyi','Edo','Ekiti','Enugu','Gombe','Imo','Jigawa','Kaduna','Kano','Katsina','Kebbi','Kogi','Kwara','Lagos','Nasarawa','Niger','Ogun','Ondo','Osun','Oyo','Plateau','Rivers','Sokoto','Taraba','Yobe','Zamfara'];
 
 // =================== UTILITIES ===================
 const CURRENCY_BY_COUNTRY = {
@@ -131,7 +127,15 @@ const genId = () => Math.random().toString(36).substr(2, 9);
 const genRef = (name) => 'REF-' + name.substr(0,2).toUpperCase() + Math.random().toString(36).substr(2,4).toUpperCase();
 
 function saveUsers(){ localStorage.setItem('tm_users', JSON.stringify(users)); }
-function saveOrders(){ localStorage.setItem('tm_orders', JSON.stringify(orders)); }
+// Refreshes the shared orders list for the signed-in user from the server
+function loadOrders() {
+  if(!state.currentUser) { orders = []; adminUsers = []; return Promise.resolve(); }
+  var reqs = [fetch('/api/orders').then(function(r){return r.json();}).then(function(res){ orders = res.orders || []; })];
+  if(state.currentUser.role==='admin') {
+    reqs.push(fetch('/api/admin/users').then(function(r){return r.json();}).then(function(res){ adminUsers = res.users || []; }));
+  }
+  return Promise.all(reqs).catch(function(){ showToast('Could not load orders. Please refresh the page.','error'); });
+}
 
 function disconnectSnap(userId) {
   const u = users.find(u => u.id === userId);
@@ -239,9 +243,9 @@ function onPageEnter(id) {
   if(id==='shop') renderShopGrid();
   if(id==='brands') renderBrandsPage();
   if(id==='wishlist') renderWishlist();
-  if(id==='orders-page') renderOrders();
+  if(id==='orders-page') loadOrders().then(renderOrders);
   if(id==='referral') renderReferral();
-  if(id==='dashboard') renderDashboard();
+  if(id==='dashboard') loadOrders().then(renderDashboard);
   if(id==='checkout') renderCheckout();
   if(id==='fashionai') initFashionAIPage();
 }
@@ -373,6 +377,8 @@ function doLogout() {
   state.currentUser = null;
   state.cart = [];
   state.wishlist = [];
+  orders = [];
+  adminUsers = [];
   updateNavForUser(null);
   showPage('home');
   updateCartBadge();
@@ -865,13 +871,13 @@ function renderCheckout() {
       <div class="bg-charcoal rounded-2xl p-6 border border-charcoal-border">
         <h3 class="font-display font-bold text-lg mb-4">Contact & Shipping</h3>
         <div class="grid grid-cols-2 gap-4">
-          <div><label class="text-xs text-neutral-400 font-medium mb-1.5 block">First Name</label><input type="text" value="${state.currentUser?.fname||''}" class="w-full px-4 py-3 bg-obsidian border border-charcoal-border rounded-xl text-sm focus:border-citrine"></div>
-          <div><label class="text-xs text-neutral-400 font-medium mb-1.5 block">Last Name</label><input type="text" value="${state.currentUser?.lname||''}" class="w-full px-4 py-3 bg-obsidian border border-charcoal-border rounded-xl text-sm focus:border-citrine"></div>
-          <div class="col-span-2"><label class="text-xs text-neutral-400 font-medium mb-1.5 block">Email</label><input type="email" value="${state.currentUser?.email||''}" class="w-full px-4 py-3 bg-obsidian border border-charcoal-border rounded-xl text-sm focus:border-citrine"></div>
-          <div class="col-span-2"><label class="text-xs text-neutral-400 font-medium mb-1.5 block">Phone</label><input type="tel" placeholder="+234 000 000 0000" class="w-full px-4 py-3 bg-obsidian border border-charcoal-border rounded-xl text-sm focus:border-citrine"></div>
-          <div class="col-span-2"><label class="text-xs text-neutral-400 font-medium mb-1.5 block">Delivery Address</label><input type="text" placeholder="Street address" class="w-full px-4 py-3 bg-obsidian border border-charcoal-border rounded-xl text-sm focus:border-citrine"></div>
-          <div><label class="text-xs text-neutral-400 font-medium mb-1.5 block">City</label><input type="text" placeholder="Lagos" class="w-full px-4 py-3 bg-obsidian border border-charcoal-border rounded-xl text-sm focus:border-citrine"></div>
-          <div><label class="text-xs text-neutral-400 font-medium mb-1.5 block">State</label><select class="w-full px-4 py-3 bg-obsidian border border-charcoal-border rounded-xl text-sm focus:border-citrine"><option>Lagos</option><option>Abuja</option><option>Kano</option><option>Rivers</option><option>Ogun</option></select></div>
+          <div><label class="text-xs text-neutral-400 font-medium mb-1.5 block">First Name</label><input id="co-fname" type="text" value="${escHtml(state.currentUser?.fname||'')}" class="w-full px-4 py-3 bg-obsidian border border-charcoal-border rounded-xl text-sm focus:border-citrine"></div>
+          <div><label class="text-xs text-neutral-400 font-medium mb-1.5 block">Last Name</label><input id="co-lname" type="text" value="${escHtml(state.currentUser?.lname||'')}" class="w-full px-4 py-3 bg-obsidian border border-charcoal-border rounded-xl text-sm focus:border-citrine"></div>
+          <div class="col-span-2"><label class="text-xs text-neutral-400 font-medium mb-1.5 block">Email</label><input id="co-email" type="email" value="${escHtml(state.currentUser?.email||'')}" class="w-full px-4 py-3 bg-obsidian border border-charcoal-border rounded-xl text-sm focus:border-citrine"></div>
+          <div class="col-span-2"><label class="text-xs text-neutral-400 font-medium mb-1.5 block">Phone</label><input id="co-phone" type="tel" placeholder="+234 000 000 0000" class="w-full px-4 py-3 bg-obsidian border border-charcoal-border rounded-xl text-sm focus:border-citrine"></div>
+          <div class="col-span-2"><label class="text-xs text-neutral-400 font-medium mb-1.5 block">Delivery Address</label><input id="co-address" type="text" placeholder="Street address" class="w-full px-4 py-3 bg-obsidian border border-charcoal-border rounded-xl text-sm focus:border-citrine"></div>
+          <div><label class="text-xs text-neutral-400 font-medium mb-1.5 block">City</label><input id="co-city" type="text" placeholder="Lagos" class="w-full px-4 py-3 bg-obsidian border border-charcoal-border rounded-xl text-sm focus:border-citrine"></div>
+          <div><label class="text-xs text-neutral-400 font-medium mb-1.5 block">State</label><select id="co-state" class="w-full px-4 py-3 bg-obsidian border border-charcoal-border rounded-xl text-sm focus:border-citrine">${NG_STATES.map(st=>`<option ${st==='Lagos'?'selected':''}>${st}</option>`).join('')}</select></div>
         </div>
       </div>
       <!-- Payment -->
@@ -882,14 +888,6 @@ function renderCheckout() {
             <input type="radio" name="payment" value="paystack" checked class="accent-citrine"> 
             <div class="flex-1"><div class="font-semibold text-sm">Paystack</div><div class="text-xs text-neutral-400">Card, bank transfer, USSD</div></div>
             <span class="text-xs text-citrine font-semibold">Recommended</span>
-          </label>
-          <label class="flex items-center gap-4 p-4 rounded-xl border border-charcoal-border cursor-pointer hover:border-neutral-500 transition-colors">
-            <input type="radio" name="payment" value="transfer" class="accent-citrine">
-            <div class="flex-1"><div class="font-semibold text-sm">Bank Transfer</div><div class="text-xs text-neutral-400">Direct transfer to our account</div></div>
-          </label>
-          <label class="flex items-center gap-4 p-4 rounded-xl border border-charcoal-border cursor-pointer hover:border-neutral-500 transition-colors">
-            <input type="radio" name="payment" value="wallet" class="accent-citrine">
-            <div class="flex-1"><div class="font-semibold text-sm">Wallet Balance</div><div class="text-xs text-neutral-400">Available: ${fmt(state.currentUser?.wallet||0)}</div></div>
           </label>
         </div>
       </div>
@@ -917,7 +915,7 @@ function renderCheckout() {
           <div class="flex justify-between font-bold text-base border-t border-charcoal-border pt-2"><span>Total</span><span id="checkout-total">${fmt(total)}</span></div>
           <div class="flex justify-between text-xs text-neutral-600"><span>Platform fee (10%)</span><span>${fmt(commission)}</span></div>
         </div>
-        <button onclick="placeOrder()" class="w-full py-4 font-bold rounded-xl uppercase tracking-wider btn-fire text-white pulse-orange relative overflow-hidden" style="background:linear-gradient(135deg,#FF6B00,#e05e00)">
+        <button id="pay-now-btn" onclick="placeOrder()" class="w-full py-4 font-bold rounded-xl uppercase tracking-wider btn-fire text-white pulse-orange relative overflow-hidden" style="background:linear-gradient(135deg,#FF6B00,#e05e00)">
           <span class="relative z-10 flex items-center justify-center gap-2">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
             <span id="pay-now-label">Pay Now · ${fmt(total)}</span>
@@ -933,29 +931,31 @@ function renderCheckout() {
   lucide.createIcons();
 }
 
-function checkoutTotals() {
-  const subtotal = cartTotal();
-  const c = state.coupon;
-  const discount = c && c.discount ? Math.round(subtotal * c.discount) : 0;
-  const delivery = (c && c.freeShip) || subtotal >= 30000 ? 0 : 2500;
-  return { subtotal, discount, delivery, total: subtotal - discount + delivery, commission: Math.round(subtotal * 0.1) };
+// What's being bought; the server looks up prices itself
+function checkoutItems() {
+  return state.cart.map(i => ({ productId: i.productId, qty: i.qty, size: i.size, color: i.color }));
+}
+function checkoutShipping() {
+  const v = id => ((document.getElementById(id) || {}).value || '').trim();
+  return { fname: v('co-fname'), lname: v('co-lname'), email: v('co-email'), phone: v('co-phone'), address: v('co-address'), city: v('co-city'), state: v('co-state') };
 }
 
 function applyCoupon() {
   const code = document.getElementById('coupon-input').value.trim().toUpperCase();
-  const coupons = { 'WELCOME10': { discount: 0.1, label: '10% off' }, 'FREESHIP': { discount: 0, freeShip: true, label: 'Free delivery' }, 'SAVE20': { discount: 0.2, label: '20% off' } };
-  if(coupons[code]) {
-    state.coupon = { code, ...coupons[code] };
-    showToast(`Coupon applied: ${coupons[code].label}!`);
-    const t = checkoutTotals();
-    document.getElementById('discount-row').classList.remove('hidden');
-    document.getElementById('discount-amount').textContent = `-${fmt(t.discount)}`;
-    document.getElementById('checkout-total').textContent = fmt(t.total);
-    const payLabel = document.getElementById('pay-now-label');
-    if (payLabel) payLabel.textContent = 'Pay Now · ' + fmt(t.total);
-  } else {
-    showToast('Invalid coupon code', 'error');
-  }
+  if(!code) return;
+  fetch('/api/orders/quote', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items: checkoutItems(), coupon: code }) })
+    .then(r => r.json())
+    .then(q => {
+      if(q.error) { showToast(q.error, 'error'); return; }
+      state.coupon = code;
+      showToast('Coupon applied: ' + q.coupon.label + '!');
+      document.getElementById('discount-row').classList.remove('hidden');
+      document.getElementById('discount-amount').textContent = '-' + fmt(q.discount);
+      document.getElementById('checkout-total').textContent = fmt(q.total);
+      const payLabel = document.getElementById('pay-now-label');
+      if (payLabel) payLabel.textContent = 'Pay Now · ' + fmt(q.total);
+    })
+    .catch(() => showToast('Connection error. Please try again.', 'error'));
 }
 
 async function placeOrder() {
@@ -963,30 +963,31 @@ async function placeOrder() {
   if(state.cart.length === 0) return;
   if(typeof PaystackPop === 'undefined') { showToast('Payment service failed to load. Check your connection and refresh.', 'error'); return; }
 
-  let publicKey = '';
+  const btn = document.getElementById('pay-now-btn');
+  if (btn) btn.disabled = true;
+  let res;
   try {
-    const cfg = await (await fetch('/api/paystack/config')).json();
-    publicKey = cfg.publicKey;
-  } catch(_) {}
-  if(!publicKey) { showToast('Payments are not configured yet. Please try again later.', 'error'); return; }
-
-  // Snapshot the order so later cart changes can't alter what was paid for
-  const totals = checkoutTotals();
-  const items = state.cart.map(i => ({ ...i }));
-  const { email, fname, lname } = state.currentUser;
+    const r = await fetch('/api/orders', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items: checkoutItems(), coupon: state.coupon || '', shipping: checkoutShipping() })
+    });
+    res = await r.json();
+    if (r.status === 401) { openAuthModal('login'); showToast('Please sign in again to continue', 'info'); return; }
+    if (!r.ok) { showToast(res.error || 'Could not start checkout', 'error'); return; }
+  } catch(_) {
+    showToast('Connection error. Please try again.', 'error');
+    return;
+  } finally {
+    if (btn) btn.disabled = false;
+  }
 
   const handler = PaystackPop.setup({
-    key: publicKey,
-    email: email,
-    amount: Math.round(totals.total * 100), // Paystack uses kobo (smallest currency unit)
+    key: res.publicKey,
+    email: res.email,
+    amount: res.amount, // kobo, set by the server
     currency: 'NGN',
-    ref: 'TM-' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2, 6).toUpperCase(),
-    metadata: {
-      custom_fields: [
-        { display_name: 'Customer Name', variable_name: 'customer_name', value: fname + ' ' + lname },
-        { display_name: 'Cart Items', variable_name: 'items', value: items.length + ' item(s)' }
-      ]
-    },
+    ref: res.reference,
+    metadata: { custom_fields: [{ display_name: 'Order', variable_name: 'order_id', value: res.order.id }] },
     onClose: function() {
       showToast('Payment window closed. Your order was not placed.', 'info');
     },
@@ -994,59 +995,26 @@ async function placeOrder() {
     callback: function(response) {
       showToast('Confirming payment…', 'info');
       fetch('/api/paystack/verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reference: response.reference, amount: totals.total })
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reference: response.reference })
       })
         .then(r => r.json().then(data => ({ ok: r.ok, data })))
         .then(({ ok, data }) => {
           if (!ok || !data.success) throw new Error(data.error || 'Verification failed');
-          finalizeOrder(response.reference, items, totals);
+          state.cart = [];
+          state.coupon = null;
+          updateCartBadge();
+          loadOrders();
+          showToast('🎉 Payment confirmed! Order ' + data.order.trackingId + ' placed!');
+          showOrderSuccessModal(data.order);
         })
         .catch(err => {
-          showToast('We could not confirm your payment (' + err.message + '). If you were charged, contact support with ref ' + response.reference, 'error');
+          showToast('We could not confirm your payment yet (' + err.message + '). If you were charged, contact support with ref ' + response.reference, 'error');
         });
     }
   });
 
   handler.openIframe();
-}
-
-function finalizeOrder(reference, items, totals) {
-  const { subtotal, commission, delivery, discount, total } = totals;
-  const newOrder = {
-    id: 'o' + Date.now(),
-    userId: state.currentUser.id,
-    items,
-    subtotal, commission, delivery, discount, total,
-    coupon: state.coupon ? state.coupon.code : null,
-    status: 'Processing',
-    date: new Date().toISOString().split('T')[0],
-    trackingId: reference,
-    paystackRef: reference,
-    paymentStatus: 'paid'
-  };
-  orders.push(newOrder);
-  saveOrders();
-  // Update user orders
-  const user = users.find(u => u.id === state.currentUser.id);
-  if (user) { user.orders = user.orders || []; user.orders.push(newOrder.id); saveUsers(); }
-  // Credit admin commission
-  const admin = users.find(u => u.role === 'admin');
-  if (admin) { admin.totalCommission = (admin.totalCommission || 0) + commission; admin.totalOrders = (admin.totalOrders || 0) + 1; admin.totalRevenue = (admin.totalRevenue || 0) + subtotal; saveUsers(); }
-  // Credit vendor revenue
-  items.forEach(item => {
-    const prod = PRODUCTS.find(p => p.id === item.productId);
-    if (prod) {
-      const vendor = users.find(u => u.brandName === prod.brand);
-      if (vendor) { vendor.storeRevenue = (vendor.storeRevenue || 0) + (item.price * item.qty); vendor.storeSales = (vendor.storeSales || 0) + item.qty; saveUsers(); }
-    }
-  });
-  state.cart = [];
-  state.coupon = null;
-  updateCartBadge();
-  showToast('🎉 Payment confirmed! Order ' + reference + ' placed!');
-  showOrderSuccessModal(newOrder);
 }
 
 function showOrderSuccessModal(order) {
@@ -1799,6 +1767,7 @@ function submitAddProduct(e) {
 
 // ---------- ADMIN DASHBOARD ----------
 function renderAdminSection(id, el, u) {
+  const users = adminUsers;
   const allRevenue = orders.reduce((s,o)=>s+o.subtotal,0);
   const allCommission = Math.round(allRevenue*0.1);
   const sections = {
@@ -1825,7 +1794,7 @@ function renderAdminSection(id, el, u) {
       <table class="data-table w-full"><thead><tr><th>Order ID</th><th>Date</th><th>Revenue</th><th>Commission</th><th>Status</th></tr></thead>
       <tbody>${orders.slice(-5).reverse().map(o=>`<tr><td class="font-mono text-xs">${o.trackingId}</td><td>${o.date}</td><td>${fmt(o.subtotal)}</td><td class="text-green-400">${fmt(Math.round(o.subtotal*0.1))}</td><td><span class="badge ${o.status==='Delivered'?'badge-green':o.status==='In Transit'?'badge-blue':'badge-yellow'}">${o.status}</span></td></tr>`).join('')||`<tr><td colspan="5" class="text-center py-6 text-neutral-500">No orders yet</td></tr>`}</tbody></table>
     </div>`,
-    orders: `<h2 class="font-display text-2xl font-bold mb-6">All Orders</h2><div class="table-scroll bg-charcoal rounded-2xl border border-charcoal-border overflow-hidden"><table class="data-table w-full"><thead><tr><th>Order ID</th><th>Customer</th><th>Date</th><th>Total</th><th>Commission</th><th>Status</th><th>Action</th></tr></thead><tbody>${orders.map(o=>{const cu=users.find(u=>u.id===o.userId);return`<tr><td class="font-mono text-xs">${o.trackingId}</td><td class="text-xs">${cu?cu.fname+' '+cu.lname:'Guest'}</td><td>${o.date}</td><td>${fmt(o.subtotal)}</td><td class="text-green-400">${fmt(Math.round(o.subtotal*0.1))}</td><td><span class="badge ${o.status==='Delivered'?'badge-green':o.status==='In Transit'?'badge-blue':'badge-yellow'}">${o.status}</span></td><td><select onchange="updateOrderStatus('${o.id}',this.value)" class="bg-obsidian border border-charcoal-border rounded-lg px-2 py-1 text-xs"><option ${o.status==='Processing'?'selected':''}>Processing</option><option ${o.status==='In Transit'?'selected':''}>In Transit</option><option ${o.status==='Delivered'?'selected':''}>Delivered</option></select></td></tr>`;}).join('')||`<tr><td colspan="7" class="text-center py-8 text-neutral-500">No orders yet</td></tr>`}</tbody></table></div>`,
+    orders: `<h2 class="font-display text-2xl font-bold mb-6">All Orders</h2><div class="table-scroll bg-charcoal rounded-2xl border border-charcoal-border overflow-hidden"><table class="data-table w-full"><thead><tr><th>Order ID</th><th>Customer</th><th>Items</th><th>Deliver To</th><th>Date</th><th>Total</th><th>Commission</th><th>Status</th><th>Action</th></tr></thead><tbody>${orders.map(o=>{const cu=users.find(u=>u.id===o.userId);return`<tr><td class="font-mono text-xs">${o.trackingId}</td><td class="text-xs">${escHtml(o.customerName||(cu?cu.fname+' '+cu.lname:'Guest'))}</td><td class="text-xs">${(o.items||[]).map(i=>escHtml(i.qty+'× '+i.name+(i.size?' ('+i.size+')':''))).join('<br>')}</td><td class="text-xs">${o.shipping?escHtml(o.shipping.phone)+'<br>'+escHtml(o.shipping.address+', '+o.shipping.city+', '+o.shipping.state):'-'}</td><td>${o.date}</td><td>${fmt(o.total)}</td><td class="text-green-400">${fmt(Math.round(o.subtotal*0.1))}</td><td><span class="badge ${o.status==='Delivered'?'badge-green':o.status==='In Transit'?'badge-blue':'badge-yellow'}">${o.status}</span></td><td><select onchange="updateOrderStatus('${o.id}',this.value)" class="bg-obsidian border border-charcoal-border rounded-lg px-2 py-1 text-xs"><option ${o.status==='Processing'?'selected':''}>Processing</option><option ${o.status==='In Transit'?'selected':''}>In Transit</option><option ${o.status==='Delivered'?'selected':''}>Delivered</option><option ${o.status==='Cancelled'?'selected':''}>Cancelled</option></select></td></tr>`;}).join('')||`<tr><td colspan="9" class="text-center py-8 text-neutral-500">No orders yet</td></tr>`}</tbody></table></div>`,
     vendors: `<h2 class="font-display text-2xl font-bold mb-6">Vendors</h2><div class="table-scroll bg-charcoal rounded-2xl border border-charcoal-border overflow-hidden"><table class="data-table w-full"><thead><tr><th>Vendor</th><th>Brand</th><th>Joined</th><th>Revenue</th><th>Commission</th><th>Status</th><th>Action</th></tr></thead><tbody>${users.filter(u=>u.role==='vendor').map(v=>{const vRev=v.storeRevenue||0;const vCom=Math.round(vRev*0.1);return`<tr><td><div><p class="font-medium">${v.fname} ${v.lname}</p><p class="text-xs text-neutral-500">${v.email}</p></div></td><td>${v.brandName||'-'}</td><td>${v.createdAt}</td><td>${fmt(vRev)}</td><td class="text-green-400">${fmt(vCom)}</td><td><span class="badge badge-green">Active</span></td><td><button onclick="showToast('Vendor management in PHP build','info')" class="text-xs text-citrine hover:underline">Manage</button></td></tr>`;}).join('')||`<tr><td colspan="7" class="text-center py-6 text-neutral-500">No vendors yet</td></tr>`}</tbody></table></div>`,
     customers: `<h2 class="font-display text-2xl font-bold mb-6">Customers</h2><div class="table-scroll bg-charcoal rounded-2xl border border-charcoal-border overflow-hidden"><table class="data-table w-full"><thead><tr><th>Customer</th><th>Joined</th><th>Orders</th><th>Referrals</th><th>Wallet</th><th>Status</th></tr></thead><tbody>${users.filter(u=>u.role==='customer').map(c=>`<tr><td><div><p class="font-medium">${c.fname} ${c.lname}</p><p class="text-xs text-neutral-500">${c.email}</p></div></td><td>${c.createdAt}</td><td>${(c.orders||[]).length}</td><td>${c.referralCount||0}</td><td>${fmt(c.wallet||0)}</td><td><span class="badge badge-green">Active</span></td></tr>`).join('')||`<tr><td colspan="6" class="text-center py-6 text-neutral-500">No customers yet</td></tr>`}</tbody></table></div>`,
     products: `<h2 class="font-display text-2xl font-bold mb-6">All Products</h2><div class="table-scroll bg-charcoal rounded-2xl border border-charcoal-border overflow-hidden"><table class="data-table w-full"><thead><tr><th>Product</th><th>Brand</th><th>Category</th><th>Price</th><th>Stock</th><th>Rating</th><th>Status</th></tr></thead><tbody>${PRODUCTS.map(p=>`<tr><td><div class="flex items-center gap-3"><img src="${p.img}" class="w-10 h-12 rounded-lg object-cover"><p class="font-medium text-sm">${p.name}</p></div></td><td class="text-sm">${p.brand}</td><td><span class="badge badge-gray">${p.category}</span></td><td>${fmt(p.price)}</td><td><span class="${p.stock<10?'text-red-400':''}">${p.stock}</span></td><td>${p.rating}</td><td><span class="badge badge-green">Active</span></td></tr>`).join('')}</tbody></table></div>`,
@@ -1838,8 +1807,17 @@ function renderAdminSection(id, el, u) {
 }
 
 function updateOrderStatus(orderId, status) {
-  const order = orders.find(o=>o.id===orderId);
-  if(order) { order.status = status; saveOrders(); showToast(`Order ${order.trackingId} marked as ${status}`); }
+  fetch('/api/orders/' + encodeURIComponent(orderId) + '/status', {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status })
+  })
+    .then(r => r.json())
+    .then(res => {
+      if (res.error) { showToast(res.error, 'error'); return; }
+      const order = orders.find(o => o.id === orderId);
+      if (order) order.status = status;
+      showToast('Order ' + res.order.trackingId + ' marked as ' + status);
+    })
+    .catch(() => showToast('Connection error. Please try again.', 'error'));
 }
 
 // =================== SEARCH ===================
@@ -2902,6 +2880,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   initCountUp();
   loadCategoryImages();
   lucide.createIcons();
+  // Show demo-account shortcuts only when the server has them enabled
+  fetch('/api/config').then(function(r){return r.json();}).then(function(cfg){
+    if(cfg.demoAccounts) document.getElementById('demo-accounts').classList.remove('hidden');
+  }).catch(function(){});
   // Restore server session on page load
   fetch('/api/auth/me').then(function(r){return r.json();}).then(function(res){
     if(res.user && !state.currentUser){ loginUser(res.user); }
