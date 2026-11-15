@@ -397,6 +397,8 @@ h1,h2,h3 { letter-spacing: -0.02em; }
     /* Clothing cards */
     .ai-cloth{border:1.5px solid #1a1a1a;border-radius:12px;padding:.8rem;cursor:pointer;transition:all .22s;background:#111;position:relative}
     .ai-cloth:hover{border-color:rgba(255,107,0,.4);background:rgba(255,107,0,.04)}
+    .ai-cloth.in-outfit{border-color:#FF6B00;background:rgba(255,107,0,.08)}
+    .ai-cloth.in-outfit::after{content:'✓';position:absolute;top:.45rem;right:.45rem;width:20px;height:20px;border-radius:50%;background:#FF6B00;color:#000;font-size:.7rem;font-weight:700;display:flex;align-items:center;justify-content:center}
     .ai-cloth.sel{border-color:#FF6B00;background:rgba(255,107,0,.08)}
     .ai-cloth.sel::after{content:'✓';position:absolute;top:6px;right:8px;font-size:.68rem;color:#FF6B00;font-weight:700}
     .ai-cloth-swatch{width:100%;height:50px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:1.5rem;margin-bottom:.5rem}
@@ -441,3 +443,12 @@ h1,h2,h3 { letter-spacing: -0.02em; }
 .star-pick.star-full path{fill:#FF6B00}
 .star-pick.star-empty path{fill:none;stroke:#4a4a4a;stroke-width:1.5}
 .star-pick:hover path,.star-pick:hover ~ .star-pick path{fill:none}
+
+/* Try-on: quick preview / quality choice and instruction chips */
+.tryon-mode { text-align: left; padding: 10px 12px; border-radius: 12px; border: 1px solid #2a2a2a; background: #0d0d0d; color: #fff; transition: border-color .15s, background .15s; }
+.tryon-mode:hover { border-color: #555; }
+.tryon-mode.active { border-color: #ff6b00; background: rgba(255, 107, 0, .08); }
+.tryon-mode.empty { opacity: .55; }
+.tryon-chip { font-size: 11px; padding: 4px 10px; border-radius: 999px; border: 1px solid #2a2a2a; color: #bbb; background: transparent; transition: border-color .15s, color .15s; }
+.tryon-chip:hover { border-color: #666; color: #fff; }
+.tryon-chip.active { border-color: #ff6b00; color: #ff6b00; background: rgba(255, 107, 0, .08); }

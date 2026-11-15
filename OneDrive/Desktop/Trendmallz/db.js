@@ -34,6 +34,16 @@ CREATE TABLE IF NOT EXISTS sessions (
 );
 CREATE INDEX IF NOT EXISTS sessions_expire_idx ON sessions (expire);
 
+CREATE TABLE IF NOT EXISTS vendor_products (
+  id         TEXT PRIMARY KEY,
+  brand      TEXT NOT NULL,
+  data       TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS gender TEXT NOT NULL DEFAULT '';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT NOT NULL DEFAULT '';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_source TEXT NOT NULL DEFAULT '';
+
 CREATE TABLE IF NOT EXISTS orders (
   id             TEXT PRIMARY KEY,
   reference      TEXT NOT NULL UNIQUE,
@@ -53,6 +63,57 @@ CREATE TABLE IF NOT EXISTS orders (
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS orders_user_idx ON orders (user_id);
+
+CREATE TABLE IF NOT EXISTS tryon_photos (
+  user_id    TEXT PRIMARY KEY REFERENCES users (id),
+  photo      TEXT NOT NULL,
+  ver        TEXT NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS tryon_jobs (
+  id         TEXT PRIMARY KEY,
+  user_id    TEXT NOT NULL REFERENCES users (id),
+  product_id TEXT NOT NULL,
+  photo_ver  TEXT NOT NULL,
+  status     TEXT NOT NULL DEFAULT 'processing',
+  image      TEXT,
+  error      TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS tryon_jobs_user_idx ON tryon_jobs (user_id, created_at);
+ALTER TABLE tryon_jobs ADD COLUMN IF NOT EXISTS hair_colour TEXT NOT NULL DEFAULT '';
+ALTER TABLE tryon_jobs ADD COLUMN IF NOT EXISTS hidden BOOLEAN NOT NULL DEFAULT false;
+
+CREATE TABLE IF NOT EXISTS tryon_photo_versions (
+  user_id    TEXT NOT NULL REFERENCES users (id),
+  ver        TEXT NOT NULL,
+  photo      TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, ver)
+);
+
+CREATE TABLE IF NOT EXISTS tryon_outfits (
+  id          TEXT PRIMARY KEY,
+  user_id     TEXT NOT NULL REFERENCES users (id),
+  photo_ver   TEXT NOT NULL,
+  items       TEXT NOT NULL,
+  status      TEXT NOT NULL DEFAULT 'processing',
+  step        INTEGER NOT NULL DEFAULT 0,
+  image       TEXT,
+  error       TEXT,
+  hair_colour TEXT NOT NULL DEFAULT '',
+  hidden      BOOLEAN NOT NULL DEFAULT false,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+ALTER TABLE tryon_outfits ADD COLUMN IF NOT EXISTS mode TEXT NOT NULL DEFAULT 'quick';
+ALTER TABLE tryon_outfits ADD COLUMN IF NOT EXISTS notes TEXT NOT NULL DEFAULT '';
+ALTER TABLE tryon_outfits ADD COLUMN IF NOT EXISTS sheet TEXT;
+ALTER TABLE tryon_jobs ADD COLUMN IF NOT EXISTS variant TEXT NOT NULL DEFAULT '';
+DROP INDEX IF EXISTS tryon_outfits_key;
+CREATE UNIQUE INDEX IF NOT EXISTS tryon_outfits_key2 ON tryon_outfits (user_id, photo_ver, items, mode, notes);
+INSERT INTO tryon_photo_versions (user_id, ver, photo) SELECT user_id, ver, photo FROM tryon_photos ON CONFLICT DO NOTHING;
 `;
 
 async function init() {
